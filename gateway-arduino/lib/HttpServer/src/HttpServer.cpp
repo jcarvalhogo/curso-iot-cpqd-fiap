@@ -22,6 +22,10 @@ const HttpServer::Telemetry &HttpServer::telemetry() const {
     return _telemetry;
 }
 
+void HttpServer::onTelemetryUpdated(TelemetryCallback cb) {
+    _onTelemetryUpdated = cb;
+}
+
 void HttpServer::registerRoutes() {
     _server.on("/", HTTP_GET, [this]() { handleRoot(); });
 
@@ -83,6 +87,11 @@ void HttpServer::handleTelemetryPost() {
     _telemetry.hasData = true;
     _telemetry.counter++;
     _telemetry.lastUpdateMs = millis();
+
+    // Notify listeners (e.g., publish to Ubidots) AFTER state update
+    if (_onTelemetryUpdated) {
+        _onTelemetryUpdated(_telemetry);
+    }
 
     _server.send(200, "application/json", makeTelemetryJson(_telemetry));
 }
