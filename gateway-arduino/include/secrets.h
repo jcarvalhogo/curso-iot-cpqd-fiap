@@ -6,6 +6,10 @@
 #define GATEWAY_ARDUINO_SECRETS_H
 #pragma once
 
+// Wi-Fi Wokwi
+//#define WIFI_SSID "Wokwi-GUEST"
+//#define WIFI_PASS ""
+
 // Wi-Fi
 #define WIFI_SSID "CARVALHO"
 #define WIFI_PASS "15935700"
