@@ -29,7 +29,6 @@ void HttpServer::onTelemetryUpdated(TelemetryCallback cb) {
 void HttpServer::registerRoutes() {
     _server.on("/", HTTP_GET, [this]() { handleRoot(); });
 
-    // English endpoint name as requested:
     _server.on("/telemetry", HTTP_GET, [this]() { handleTelemetryGet(); });
     _server.on("/telemetry", HTTP_POST, [this]() { handleTelemetryPost(); });
 
@@ -40,7 +39,11 @@ void HttpServer::handleRoot() {
     _server.send(200, "text/plain",
                  "gateway-arduino\n"
                  "GET  /telemetry\n"
-                 "POST /telemetry\n");
+                 "POST /telemetry\n"
+                 "\n"
+                 "POST examples:\n"
+                 "  - JSON: {\"temperature\":25.3,\"humidity\":60.2}\n"
+                 "  - Args: temperature=25.3&humidity=60.2\n");
 }
 
 void HttpServer::handleTelemetryGet() {
@@ -58,13 +61,12 @@ void HttpServer::handleTelemetryPost() {
     float temp = NAN;
     float hum = NAN;
 
-    // First try args (works for form-url-encoded and query string)
+    // 1) Try args first
     okTemp = tryReadFloatArg(_server, "temperature", temp);
     okHum = tryReadFloatArg(_server, "humidity", hum);
 
-    // Then try JSON body if still missing
+    // 2) If still missing, try JSON body
     if (!okTemp || !okHum) {
-        // Body is available via plain() on ESP32 WebServer
         String body = _server.arg("plain");
         body.trim();
 
@@ -74,9 +76,10 @@ void HttpServer::handleTelemetryPost() {
         }
     }
 
+    // If nothing came, reject
     if (!okTemp && !okHum) {
         _server.send(400, "application/json",
-                     "{\"error\":\"Missing telemetry fields. Send JSON body or args: temperature, humidity\"}");
+                     "{\"ok\":false,\"error\":\"Missing telemetry fields\",\"hint\":\"Send JSON body or args: temperature, humidity\"}");
         return;
     }
 
@@ -84,16 +87,32 @@ void HttpServer::handleTelemetryPost() {
     if (okTemp) _telemetry.temperature = temp;
     if (okHum) _telemetry.humidity = hum;
 
-    _telemetry.hasData = true;
     _telemetry.counter++;
     _telemetry.lastUpdateMs = millis();
 
-    // Notify listeners (e.g., publish to Ubidots) AFTER state update
-    if (_onTelemetryUpdated) {
+    // Only set hasData=true when we have BOTH fields valid
+    const bool hasTemp = !isnan(_telemetry.temperature);
+    const bool hasHum = !isnan(_telemetry.humidity);
+    _telemetry.hasData = hasTemp && hasHum;
+
+    // Notify listeners only if telemetry is "publishable"
+    // (avoid sending NaN or partial data to Ubidots/ThingSpeak)
+    if (_telemetry.hasData && _onTelemetryUpdated) {
         _onTelemetryUpdated(_telemetry);
     }
 
-    _server.send(200, "application/json", makeTelemetryJson(_telemetry));
+    // Reply with extra debug info but keeping the same telemetry JSON format as base
+    // If you prefer to keep ONLY telemetry JSON, tell me and I remove these fields.
+    String resp = "{";
+    resp += "\"ok\":true";
+    resp += ",\"updated\":{";
+    resp += "\"temperature\":" + String(okTemp ? "true" : "false");
+    resp += ",\"humidity\":" + String(okHum ? "true" : "false");
+    resp += "}";
+    resp += ",\"telemetry\":" + makeTelemetryJson(_telemetry);
+    resp += "}";
+
+    _server.send(200, "application/json", resp);
 }
 
 void HttpServer::handleNotFound() {
@@ -103,9 +122,11 @@ void HttpServer::handleNotFound() {
 
 bool HttpServer::tryReadFloatArg(WebServer &s, const String &name, float &out) {
     if (!s.hasArg(name)) return false;
+
     String v = s.arg(name);
     v.trim();
     if (v.isEmpty()) return false;
+
     out = v.toFloat();
     return true;
 }
@@ -123,8 +144,9 @@ bool HttpServer::tryExtractJsonNumber(const String &json, const char *key, float
     int i = colon + 1;
     while (i < (int) json.length() && isspace((unsigned char) json[i])) i++;
 
-    // read until separator
+    // allow optional sign
     int j = i;
+
     while (j < (int) json.length()) {
         char c = json[j];
         if (c == ',' || c == '}' || isspace((unsigned char) c)) break;
@@ -142,7 +164,6 @@ bool HttpServer::tryExtractJsonNumber(const String &json, const char *key, float
 }
 
 String HttpServer::makeTelemetryJson(const Telemetry &t) {
-    // Keep it simple and predictable
     String s = "{";
     s += "\"hasData\":" + String(t.hasData ? "true" : "false");
     s += ",\"temperature\":" + (isnan(t.temperature) ? String("null") : String(t.temperature, 2));

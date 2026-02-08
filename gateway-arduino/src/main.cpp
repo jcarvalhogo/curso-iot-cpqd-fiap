@@ -2,10 +2,13 @@
 #include <WiFi.h>
 
 #include "secrets.h"
+
+// Forçando includes de libs do /lib (forma mais estável no PlatformIO)
 #include "LedStatus.h"
 #include "WiFiManager.h"
 #include "HttpServer.h"
 #include "UbidotsClient.h"
+#include "ThingSpeakClient.h"
 
 #define LED_PIN 2
 #define HTTP_PORT 8045
@@ -16,6 +19,9 @@ HttpServer http(HTTP_PORT);
 
 // Ubidots
 UbidotsClient *ubidots = nullptr;
+
+// ThingSpeak
+ThingSpeakClient *thingspeak = nullptr;
 
 static bool lastWifiConnected = false;
 
@@ -50,7 +56,6 @@ void setup() {
     wifi->connect();
 
     // Start HTTP server regardless of Wi-Fi state.
-    // We'll only call http.update() while connected.
     http.begin();
 
     // Ubidots client config
@@ -62,24 +67,48 @@ void setup() {
     ubidots = new UbidotsClient(ucfg);
     ubidots->begin();
 
-    // When POST /telemetry is accepted, publish to Ubidots
+    // ThingSpeak client config
+    ThingSpeakClient::Config tcfg;
+    tcfg.writeApiKey = THINGSPEAK_WRITE_KEY; // coloque no secrets.h
+    tcfg.minIntervalMs = 20000;              // 20s (seguro contra rate limit)
+
+    thingspeak = new ThingSpeakClient(tcfg);
+    thingspeak->setDebugStream(&Serial);
+    thingspeak->begin();
+
+    Serial.print("[ThingSpeak] Config OK key=");
+    Serial.println(ThingSpeakClient::maskKey(THINGSPEAK_WRITE_KEY));
+
+    // When POST /telemetry is accepted, publish to Ubidots + ThingSpeak
     http.onTelemetryUpdated([](const HttpServer::Telemetry &t) {
         if (!t.hasData) return;
-        if (!ubidots) return;
 
-        const bool ok = ubidots->publishTelemetry(t.temperature, t.humidity);
-        Serial.println(ok ? "[Ubidots] Telemetry sent" : "[Ubidots] Send failed");
+        if (ubidots) {
+            const bool ok = ubidots->publishTelemetry(t.temperature, t.humidity);
+            Serial.println(ok ? "[Ubidots] Telemetry sent" : "[Ubidots] Send failed");
+        }
+
+        if (thingspeak) {
+            const bool ok = thingspeak->publishTelemetry(t);
+            Serial.println(ok ? "[ThingSpeak] Telemetry sent" : "[ThingSpeak] Send failed");
+
+            if (!ok) {
+                Serial.print("[ThingSpeak] err=");
+                Serial.print((int) thingspeak->lastError());
+                Serial.print(" http=");
+                Serial.print(thingspeak->lastHttpStatus());
+                Serial.print(" entry_id=");
+                Serial.println(thingspeak->lastEntryId());
+            }
+        }
     });
 }
 
 void loop() {
-    if (wifi) {
-        wifi->update();
-    }
+    if (wifi) wifi->update();
 
     const bool connectedNow = (wifi && wifi->isConnected());
 
-    // Only react when connection state changes (avoids repeated logs / repeated LED set)
     if (connectedNow != lastWifiConnected) {
         lastWifiConnected = connectedNow;
 
@@ -93,12 +122,11 @@ void loop() {
         }
     }
 
-    // Serve HTTP only when Wi-Fi is up (so requests don't hang)
     if (connectedNow) {
         http.update();
-        if (ubidots) ubidots->update(); // keep MQTT alive / reconnect if needed
+        if (ubidots) ubidots->update();
+        if (thingspeak) thingspeak->update();
     }
 
-    // Always keep LED state machine running
     led.update();
 }

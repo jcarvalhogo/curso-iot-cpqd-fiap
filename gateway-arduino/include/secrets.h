@@ -14,8 +14,12 @@
 #define WIFI_SSID "CARVALHO"
 #define WIFI_PASS "15935700"
 
-// Ubidots (Industrial)
+// Ubidots
 #define UBIDOTS_TOKEN "BBUS-mKj0EIHbFBti3g9DiutAYD9UGd6Cje"
 #define UBIDOTS_DEVICE_LABEL "vehicle-telemetry"
+
+// thingspeak
+#define THINGSPEAK_WRITE_KEY "P5PUL8UU9B0G65EU"
+
 
 #endif //GATEWAY_ARDUINO_SECRETS_H
