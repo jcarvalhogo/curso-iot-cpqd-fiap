@@ -35,13 +35,18 @@ bool GatewayClient::canPublishNow(uint32_t now) const {
     return (now - _lastPublishMs) >= _cfg.minIntervalMs;
 }
 
-// Wrapper compatível: mantém assinatura antiga
+// Wrapper compatível: mantém assinatura antiga (sem fuelLevel/stepperSpeed)
 bool GatewayClient::publishTelemetry(float temperature, float humidity) {
-    return publishTelemetry(temperature, humidity, -1); // -1 => não envia fuelLevel
+    return publishTelemetry(temperature, humidity, -1, -1.0f);
 }
 
-// Nova versão: inclui fuelLevel (opcional)
+// Wrapper compatível: fuelLevel apenas (sem stepperSpeed)
 bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent) {
+    return publishTelemetry(temperature, humidity, fuelLevelPercent, -1.0f);
+}
+
+// Versão completa: inclui fuelLevel (opcional) e stepperSpeed (opcional)
+bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed) {
     _lastError = Error::None;
     _lastHttpStatus = -1;
 
@@ -73,6 +78,11 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuel
     if (fuelLevelPercent >= 0) {
         fuelLevelPercent = constrain(fuelLevelPercent, 0, 100);
         body += ",\"fuelLevel\":" + String(fuelLevelPercent);
+    }
+
+    // Campo opcional: stepperSpeed (steps/s)
+    if (stepperSpeed >= 0.0f) {
+        body += ",\"stepperSpeed\":" + String(stepperSpeed, 1);
     }
 
     body += "}";

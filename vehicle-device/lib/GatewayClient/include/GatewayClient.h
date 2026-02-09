@@ -38,11 +38,15 @@ public:
 
     void setDebugStream(Stream *s);
 
-    // Compatível com versão anterior (sem fuelLevel)
+    // Compatível com versão anterior (sem fuelLevel/stepperSpeed)
     bool publishTelemetry(float temperature, float humidity);
 
     // Nova versão (com fuelLevel). Se fuelLevelPercent < 0, não envia o campo.
     bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent);
+
+    // Versão completa: fuelLevel opcional + stepperSpeed opcional (steps/s)
+    // stepperSpeed < 0 => não envia o campo.
+    bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed);
 
     // Diagnóstico
     Error lastError() const noexcept { return _lastError; }
