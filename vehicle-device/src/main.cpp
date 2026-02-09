@@ -27,7 +27,7 @@
 #define STEPPER_IN4 25
 
 static const uint32_t PRINT_INTERVAL_MS = 5000;
-static const uint32_t SEND_INTERVAL_MS = 15000; // teste visual
+static const uint32_t SEND_INTERVAL_MS =  5000; // teste visual
 static const uint32_t STEPPER_UPDATE_MS = 80; // mais responsivo
 
 // VISUAL (mais frenético)
