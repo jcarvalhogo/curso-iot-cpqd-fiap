@@ -12,12 +12,12 @@
 class GatewayClient {
 public:
     struct Config {
-        const char* host = nullptr;   // ex: "192.168.3.12" ou "gateway-arduino.local"
+        const char *host = nullptr; // ex: "192.168.3.12" ou "gateway-arduino.local"
         uint16_t port = 8045;
-        const char* path = "/telemetry";
+        const char *path = "/telemetry";
 
         uint32_t minIntervalMs = 2000; // evita flood (padrão: 2s)
-        uint32_t timeoutMs = 3000;     // timeout de socket/response
+        uint32_t timeoutMs = 3000; // timeout de socket/response
     };
 
     enum class Error : uint8_t {
@@ -31,14 +31,18 @@ public:
         BadHttpStatus
     };
 
-    explicit GatewayClient(const Config& cfg);
+    explicit GatewayClient(const Config &cfg);
 
-    void begin();   // reservado
-    void update();  // reservado
+    void begin(); // reservado
+    void update(); // reservado
 
-    void setDebugStream(Stream* s);
+    void setDebugStream(Stream *s);
 
+    // Compatível com versão anterior (sem fuelLevel)
     bool publishTelemetry(float temperature, float humidity);
+
+    // Nova versão (com fuelLevel). Se fuelLevelPercent < 0, não envia o campo.
+    bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent);
 
     // Diagnóstico
     Error lastError() const noexcept { return _lastError; }
@@ -47,14 +51,15 @@ public:
 
 private:
     Config _cfg{};
-    Stream* _dbg = nullptr;
+    Stream *_dbg = nullptr;
 
     Error _lastError = Error::None;
     int _lastHttpStatus = -1;
     uint32_t _lastPublishMs = 0;
 
     bool canPublishNow(uint32_t now) const;
-    void dbgln(const String& s);
+
+    void dbgln(const String &s);
 
     bool isConfigValid() const;
 };

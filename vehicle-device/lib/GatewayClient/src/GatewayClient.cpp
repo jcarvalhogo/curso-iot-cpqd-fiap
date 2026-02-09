@@ -35,7 +35,13 @@ bool GatewayClient::canPublishNow(uint32_t now) const {
     return (now - _lastPublishMs) >= _cfg.minIntervalMs;
 }
 
+// Wrapper compatível: mantém assinatura antiga
 bool GatewayClient::publishTelemetry(float temperature, float humidity) {
+    return publishTelemetry(temperature, humidity, -1); // -1 => não envia fuelLevel
+}
+
+// Nova versão: inclui fuelLevel (opcional)
+bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent) {
     _lastError = Error::None;
     _lastHttpStatus = -1;
 
@@ -62,6 +68,13 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity) {
     String body = "{";
     body += "\"temperature\":" + String(temperature, 2);
     body += ",\"humidity\":" + String(humidity, 2);
+
+    // Campo opcional: fuelLevel (0..100)
+    if (fuelLevelPercent >= 0) {
+        fuelLevelPercent = constrain(fuelLevelPercent, 0, 100);
+        body += ",\"fuelLevel\":" + String(fuelLevelPercent);
+    }
+
     body += "}";
 
     WiFiClient client;

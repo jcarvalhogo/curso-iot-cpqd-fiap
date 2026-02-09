@@ -7,9 +7,13 @@
 
 #include <DhtSensor.h>
 #include <GatewayClient.h>
+#include <FuelLevel.h>
 
 #define LED_PIN 2
 #define DHT_PIN 4
+
+// Pot (ADC1 recomendado)
+#define FUEL_ADC_PIN 34
 
 #define GATEWAY_HOST "192.168.3.12"
 #define GATEWAY_PORT 8045
@@ -22,10 +26,18 @@ LedStatus led(LED_PIN);
 WiFiManager *wifi = nullptr;
 DhtSensor *dht = nullptr;
 GatewayClient *gateway = nullptr;
+FuelLevel *fuel = nullptr;
 
 static bool lastWifiConnected = false;
 static uint32_t lastPrintMs = 0;
 static uint32_t lastSendAttemptMs = 0;
+
+static void logGatewayFail() {
+    Serial.print("[Gateway] Send failed err=");
+    Serial.print((int) gateway->lastError());
+    Serial.print(" http=");
+    Serial.println(gateway->lastHttpStatus());
+}
 
 void setup() {
     Serial.begin(115200);
@@ -50,11 +62,7 @@ void setup() {
     wifi->connect();
 
     lastWifiConnected = (wifi && wifi->isConnected());
-    if (lastWifiConnected) {
-        led.setMode(LedStatus::Mode::BLINK_SLOW);
-    } else {
-        led.setMode(LedStatus::Mode::BLINK_FAST);
-    }
+    led.setMode(lastWifiConnected ? LedStatus::Mode::BLINK_SLOW : LedStatus::Mode::BLINK_FAST);
 
     // DHT
     DhtSensor::Config dcfg;
@@ -63,8 +71,20 @@ void setup() {
     dcfg.minIntervalMs = 2000;
 
     dht = new DhtSensor(dcfg);
-    // dht->setDebugStream(&Serial); // opcional (pode gerar log)
+    // dht->setDebugStream(&Serial); // opcional
     dht->begin();
+
+    // Fuel (potenciômetro -> 0..100%)
+    FuelLevel::Config fcfg;
+    fcfg.adcPin = FUEL_ADC_PIN;
+    // Valores iniciais de calibração (ajuste depois com base no raw real)
+    fcfg.adcMin = 200; // pot no "vazio"
+    fcfg.adcMax = 3800; // pot no "cheio"
+    fcfg.invert = false;
+    fcfg.samples = 10;
+
+    fuel = new FuelLevel(fcfg);
+    fuel->begin();
 
     // Gateway client
     GatewayClient::Config gcfg;
@@ -75,18 +95,13 @@ void setup() {
     gcfg.timeoutMs = 3000;
 
     gateway = new GatewayClient(gcfg);
-    gateway->setDebugStream(&Serial); // útil no começo; depois pode remover
+    gateway->setDebugStream(&Serial);
     gateway->begin();
 
     Serial.print("[Device] MAC: ");
     Serial.println(WiFi.macAddress());
-}
 
-static void logGatewayFail() {
-    Serial.print("[Gateway] Send failed err=");
-    Serial.print((int) gateway->lastError());
-    Serial.print(" http=");
-    Serial.println(gateway->lastHttpStatus());
+    Serial.println("[Fuel] Calibration tip: observe raw at min/max and update adcMin/adcMax.");
 }
 
 void loop() {
@@ -102,7 +117,8 @@ void loop() {
             led.setMode(LedStatus::Mode::BLINK_SLOW);
         } else {
             Serial.println("[WiFi] Disconnected");
-            led.setMode(LedStatus::Mode::OFF);
+            // melhor pra debug do device: mostra que caiu rede
+            led.setMode(LedStatus::Mode::BLINK_FAST);
         }
     }
 
@@ -110,7 +126,11 @@ void loop() {
 
     const uint32_t now = millis();
 
-    // Print local do DHT a cada 5s
+    // Leitura do fuel (faz uma vez por loop; barato o suficiente)
+    const int fuelRaw = (fuel) ? fuel->readRaw() : -1;
+    const int fuelPct = (fuel) ? fuel->readPercent() : -1;
+
+    // Print local a cada 5s
     if (now - lastPrintMs >= PRINT_INTERVAL_MS) {
         lastPrintMs = now;
 
@@ -120,20 +140,21 @@ void loop() {
         } else {
             Serial.println("[DHT] no valid data yet");
         }
+
+        Serial.printf("[Fuel] raw=%d | level=%d %%\n", fuelRaw, fuelPct);
     }
 
-    // Envio pro gateway a cada SEND_INTERVAL_MS (sem flood)
-    if (connectedNow && dht && dht->hasData() && gateway) {
+    // Envio pro gateway a cada SEND_INTERVAL_MS
+    if (connectedNow && dht && dht->hasData() && gateway && fuel) {
         if (now - lastSendAttemptMs >= SEND_INTERVAL_MS) {
             lastSendAttemptMs = now;
 
             const auto &r = dht->data();
-            const bool ok = gateway->publishTelemetry(r.temperature, r.humidity);
 
+            const bool ok = gateway->publishTelemetry(r.temperature, r.humidity, fuelPct);
             if (ok) {
                 Serial.println("[Gateway] Telemetry sent");
             } else {
-                // aqui não deve mais cair em RateLimited, mas se cair, não spamma
                 if (gateway->lastError() != GatewayClient::Error::RateLimited) {
                     logGatewayFail();
                 }
