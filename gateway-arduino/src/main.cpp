@@ -58,6 +58,9 @@ void setup() {
     // Start HTTP server regardless of Wi-Fi state.
     http.begin();
 
+    // >>> define o intervalo do ThingSpeak pelo HttpServer (30s)
+    http.setThingSpeakIntervalMs(30000);
+
     // Ubidots client config
     UbidotsClient::Config ucfg;
     ucfg.token = UBIDOTS_TOKEN;
@@ -70,7 +73,7 @@ void setup() {
     // ThingSpeak client config
     ThingSpeakClient::Config tcfg;
     tcfg.writeApiKey = THINGSPEAK_WRITE_KEY; // coloque no secrets.h
-    tcfg.minIntervalMs = 20000;              // 20s (seguro contra rate limit)
+    tcfg.minIntervalMs = 20000; // pode manter como “safety”, mas agora quem manda é o HttpServer
 
     thingspeak = new ThingSpeakClient(tcfg);
     thingspeak->setDebugStream(&Serial);
@@ -79,7 +82,9 @@ void setup() {
     Serial.print("[ThingSpeak] Config OK key=");
     Serial.println(ThingSpeakClient::maskKey(THINGSPEAK_WRITE_KEY));
 
-    // When POST /telemetry is accepted, publish to Ubidots + ThingSpeak
+    // ============================================================
+    // 1) Ubidots: IMEDIATO quando chega POST /telemetry válido
+    // ============================================================
     http.onTelemetryUpdated([](const HttpServer::Telemetry &t) {
         if (!t.hasData) return;
 
@@ -87,6 +92,15 @@ void setup() {
             const bool ok = ubidots->publishTelemetry(t.temperature, t.humidity);
             Serial.println(ok ? "[Ubidots] Telemetry sent" : "[Ubidots] Send failed");
         }
+
+        // >>> NÃO enviar ThingSpeak aqui (evita rate-limit)
+    });
+
+    // ============================================================
+    // 2) ThingSpeak: SOMENTE quando o timer de 30s liberar
+    // ============================================================
+    http.onThingSpeakDue([](const HttpServer::Telemetry &t) {
+        if (!t.hasData) return;
 
         if (thingspeak) {
             const bool ok = thingspeak->publishTelemetry(t);
@@ -122,8 +136,12 @@ void loop() {
         }
     }
 
+    // IMPORTANTE:
+    // http.update() precisa rodar para processar requisições E para o timer do ThingSpeak (tickThingSpeakTimer).
+    // Você pode chamar http.update() sempre; não depende de Wi-Fi, mas só faz sentido publicar quando conectado.
+    http.update();
+
     if (connectedNow) {
-        http.update();
         if (ubidots) ubidots->update();
         if (thingspeak) thingspeak->update();
     }

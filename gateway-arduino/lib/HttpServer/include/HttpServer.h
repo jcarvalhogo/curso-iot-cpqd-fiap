@@ -23,7 +23,7 @@ public:
 
     using TelemetryCallback = std::function<void(const Telemetry &)>;
 
-    explicit HttpServer(uint16_t port = 8045);
+    explicit HttpServer(uint16_t port);
 
     void begin();
 
@@ -31,17 +31,22 @@ public:
 
     const Telemetry &telemetry() const;
 
-    // Called after a POST /telemetry successfully updates internal telemetry
+    // Ubidots (imediato)
     void onTelemetryUpdated(TelemetryCallback cb);
 
-private:
-    WebServer _server;
-    Telemetry _telemetry;
-    TelemetryCallback _onTelemetryUpdated;
+    // ThingSpeak (a cada 30s)
+    void onThingSpeakDue(TelemetryCallback cb);
 
+    void setThingSpeakIntervalMs(uint32_t intervalMs);
+
+    // Gate interno para evitar chamar ThingSpeak fora do tempo
+    bool canSendThingSpeakNow() const;
+
+    void markThingSpeakSent();
+
+private:
     void registerRoutes();
 
-    // Handlers
     void handleRoot();
 
     void handleTelemetryGet();
@@ -50,12 +55,24 @@ private:
 
     void handleNotFound();
 
-    // Helpers
-    static bool tryReadFloatArg(WebServer &s, const String &name, float &out);
+    bool tryReadFloatArg(WebServer &s, const String &name, float &out);
 
-    static bool tryExtractJsonNumber(const String &json, const char *key, float &out);
+    bool tryExtractJsonNumber(const String &json, const char *key, float &out);
 
-    static String makeTelemetryJson(const Telemetry &t);
+    String makeTelemetryJson(const Telemetry &t);
+
+    void tickThingSpeakTimer();
+
+private:
+    WebServer _server;
+    Telemetry _telemetry;
+
+    TelemetryCallback _onTelemetryUpdated; // Ubidots
+    TelemetryCallback _onThingSpeakDue; // ThingSpeak
+
+    uint32_t _thingSpeakIntervalMs = 30000; // 30s
+    uint32_t _lastThingSpeakSendMs = 0; // último envio
+    bool _thingSpeakPending = false; // dado pendente
 };
 
 #endif // GATEWAY_ARDUINO_HTTPSERVER_H

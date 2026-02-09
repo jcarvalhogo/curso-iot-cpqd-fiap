@@ -11,19 +11,46 @@ HttpServer::HttpServer(uint16_t port)
 void HttpServer::begin() {
     registerRoutes();
     _server.begin();
+
+    // Libera o 1º envio do ThingSpeak assim que chegar o 1º dado válido
+    _lastThingSpeakSendMs = 0;
+
     Serial.println("[HTTP] Server started");
 }
 
 void HttpServer::update() {
     _server.handleClient();
+    tickThingSpeakTimer(); // timer do ThingSpeak roda no loop
 }
 
 const HttpServer::Telemetry &HttpServer::telemetry() const {
     return _telemetry;
 }
 
+// Ubidots (imediato)
 void HttpServer::onTelemetryUpdated(TelemetryCallback cb) {
     _onTelemetryUpdated = cb;
+}
+
+// ThingSpeak (a cada 30s)
+void HttpServer::onThingSpeakDue(TelemetryCallback cb) {
+    _onThingSpeakDue = cb;
+}
+
+void HttpServer::setThingSpeakIntervalMs(uint32_t intervalMs) {
+    if (intervalMs < 1000) intervalMs = 1000; // proteção mínima
+    _thingSpeakIntervalMs = intervalMs;
+}
+
+bool HttpServer::canSendThingSpeakNow() const {
+    const uint32_t now = millis();
+    const uint32_t elapsed = now - _lastThingSpeakSendMs; // ok com overflow
+    return elapsed >= _thingSpeakIntervalMs;
+}
+
+void HttpServer::markThingSpeakSent() {
+    _lastThingSpeakSendMs = millis();
+    _thingSpeakPending = false;
 }
 
 void HttpServer::registerRoutes() {
@@ -95,14 +122,17 @@ void HttpServer::handleTelemetryPost() {
     const bool hasHum = !isnan(_telemetry.humidity);
     _telemetry.hasData = hasTemp && hasHum;
 
-    // Notify listeners only if telemetry is "publishable"
-    // (avoid sending NaN or partial data to Ubidots/ThingSpeak)
+    // Ubidots: envia imediatamente quando telemetria é publicável
     if (_telemetry.hasData && _onTelemetryUpdated) {
         _onTelemetryUpdated(_telemetry);
     }
 
-    // Reply with extra debug info but keeping the same telemetry JSON format as base
-    // If you prefer to keep ONLY telemetry JSON, tell me and I remove these fields.
+    // ThingSpeak: marca como pendente (timer decide quando enviar)
+    if (_telemetry.hasData) {
+        _thingSpeakPending = true;
+    }
+
+    // Reply com debug + telemetry
     String resp = "{";
     resp += "\"ok\":true";
     resp += ",\"updated\":{";
@@ -113,6 +143,19 @@ void HttpServer::handleTelemetryPost() {
     resp += "}";
 
     _server.send(200, "application/json", resp);
+}
+
+void HttpServer::tickThingSpeakTimer() {
+    // Só envia se tiver callback, dado válido e existir algo pendente
+    if (!_onThingSpeakDue) return;
+    if (!_thingSpeakPending) return;
+    if (!_telemetry.hasData) return;
+
+    if (!canSendThingSpeakNow()) return;
+
+    // marca antes para evitar duplicidade/reentrância
+    markThingSpeakSent();
+    _onThingSpeakDue(_telemetry);
 }
 
 void HttpServer::handleNotFound() {
@@ -144,12 +187,10 @@ bool HttpServer::tryExtractJsonNumber(const String &json, const char *key, float
     int i = colon + 1;
     while (i < (int) json.length() && isspace((unsigned char) json[i])) i++;
 
-    // allow optional sign
     int j = i;
-
     while (j < (int) json.length()) {
         char c = json[j];
-        if (c == ',' || c == '}' || isspace((unsigned char) c)) break;
+        if (c == ',' || c == '}' || isspace((unsigned char) json[j])) break;
         j++;
     }
 
