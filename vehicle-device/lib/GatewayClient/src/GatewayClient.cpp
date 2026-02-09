@@ -7,6 +7,18 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 
+static void dbgNet(Stream *dbg, const char *host, uint16_t port) {
+    if (!dbg) return;
+    dbg->print("[Net] local=");
+    dbg->print(WiFi.localIP());
+    dbg->print(" rssi=");
+    dbg->print(WiFi.RSSI());
+    dbg->print(" dst=");
+    dbg->print(host ? host : "(null)");
+    dbg->print(":");
+    dbg->println(port);
+}
+
 GatewayClient::GatewayClient(const Config &cfg) : _cfg(cfg) {
 }
 
@@ -35,18 +47,26 @@ bool GatewayClient::canPublishNow(uint32_t now) const {
     return (now - _lastPublishMs) >= _cfg.minIntervalMs;
 }
 
-// Wrapper compatível: mantém assinatura antiga (sem fuelLevel/stepperSpeed)
+// Wrapper compatível: mantém assinatura antiga
 bool GatewayClient::publishTelemetry(float temperature, float humidity) {
-    return publishTelemetry(temperature, humidity, -1, -1.0f);
+    return publishTelemetry(temperature, humidity, -1, -1.0f, -1.0f);
 }
 
-// Wrapper compatível: fuelLevel apenas (sem stepperSpeed)
+// Wrapper: fuel apenas
 bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent) {
-    return publishTelemetry(temperature, humidity, fuelLevelPercent, -1.0f);
+    return publishTelemetry(temperature, humidity, fuelLevelPercent, -1.0f, -1.0f);
 }
 
-// Versão completa: inclui fuelLevel (opcional) e stepperSpeed (opcional)
+// Wrapper: fuel + stepperSpeed
 bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed) {
+    return publishTelemetry(temperature, humidity, fuelLevelPercent, stepperSpeed, -1.0f);
+}
+
+// Versão completa: fuel + stepperSpeed + stepperRpm (todos opcionais)
+bool GatewayClient::publishTelemetry(float temperature, float humidity,
+                                     int fuelLevelPercent,
+                                     float stepperSpeed,
+                                     float stepperRpm) {
     _lastError = Error::None;
     _lastHttpStatus = -1;
 
@@ -74,24 +94,44 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuel
     body += "\"temperature\":" + String(temperature, 2);
     body += ",\"humidity\":" + String(humidity, 2);
 
-    // Campo opcional: fuelLevel (0..100)
     if (fuelLevelPercent >= 0) {
         fuelLevelPercent = constrain(fuelLevelPercent, 0, 100);
         body += ",\"fuelLevel\":" + String(fuelLevelPercent);
     }
 
-    // Campo opcional: stepperSpeed (steps/s)
     if (stepperSpeed >= 0.0f) {
         body += ",\"stepperSpeed\":" + String(stepperSpeed, 1);
+    }
+
+    if (stepperRpm >= 0.0f) {
+        body += ",\"stepperRpm\":" + String(stepperRpm, 2);
     }
 
     body += "}";
 
     WiFiClient client;
-    client.setTimeout(_cfg.timeoutMs / 1000); // timeout em segundos (aprox) no core
-    if (!client.connect(_cfg.host, _cfg.port)) {
+
+    // setTimeout aqui é "best effort" (depende do core), deixa curto pra não travar
+    client.setTimeout(1);
+
+    // Tenta conectar (2 tentativas rápidas)
+    bool connected = false;
+    for (int attempt = 1; attempt <= 2; attempt++) {
+        if (client.connect(_cfg.host, _cfg.port)) {
+            connected = true;
+            break;
+        }
+        // Log detalhado no 1º fail
+        if (attempt == 1) {
+            _lastError = Error::ConnectFailed;
+            dbgln("[Gateway] connect failed");
+            dbgNet(_dbg, _cfg.host, _cfg.port);
+        }
+        delay(50);
+    }
+
+    if (!connected) {
         _lastError = Error::ConnectFailed;
-        dbgln("[Gateway] connect failed");
         return false;
     }
 
@@ -104,7 +144,7 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuel
     client.print("Connection: close\r\n\r\n");
     client.print(body);
 
-    // Aguarda status line
+    // Aguarda status line (timeout em ms real, controlado por nós)
     const uint32_t t0 = millis();
     while (!client.available()) {
         if (millis() - t0 > _cfg.timeoutMs) {
@@ -113,7 +153,7 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuel
             client.stop();
             return false;
         }
-        delay(5);
+        delay(2);
     }
 
     String statusLine = client.readStringUntil('\n');
