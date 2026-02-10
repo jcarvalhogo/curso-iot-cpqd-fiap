@@ -69,8 +69,8 @@ void HttpServer::handleRoot() {
                  "POST /telemetry\n"
                  "\n"
                  "POST examples:\n"
-                 "  - JSON: {\"temperature\":25.3,\"humidity\":60.2}\n"
-                 "  - Args: temperature=25.3&humidity=60.2\n");
+                 "  - JSON: {\"temperature\":28.30,\"humidity\":68.30,\"fuelLevel\":77,\"stepperSpeed\":40.0,\"stepperRpm\":800.0}\n"
+                 "  - Args: temperature=28.30&humidity=68.30&fuelLevel=77&stepperSpeed=40.0&stepperRpm=800.0\n");
 }
 
 void HttpServer::handleTelemetryGet() {
@@ -79,34 +79,47 @@ void HttpServer::handleTelemetryGet() {
 
 void HttpServer::handleTelemetryPost() {
     // Accept payload from:
-    // 1) JSON body: {"temperature": 25.3, "humidity": 50.1}
-    // 2) query/form args: temperature=...&humidity=...
+    // 1) JSON body
+    // 2) query/form args
 
     bool okTemp = false;
     bool okHum = false;
+    bool okFuel = false;
+    bool okSpeed = false;
+    bool okRpm = false;
 
     float temp = NAN;
     float hum = NAN;
 
+    float fuelF = NAN;
+    float speed = NAN;
+    float rpm = NAN;
+
     // 1) Try args first
     okTemp = tryReadFloatArg(_server, "temperature", temp);
     okHum = tryReadFloatArg(_server, "humidity", hum);
+    okFuel = tryReadFloatArg(_server, "fuelLevel", fuelF);
+    okSpeed = tryReadFloatArg(_server, "stepperSpeed", speed);
+    okRpm = tryReadFloatArg(_server, "stepperRpm", rpm);
 
-    // 2) If still missing, try JSON body
-    if (!okTemp || !okHum) {
+    // 2) If missing, try JSON body
+    if (!okTemp || !okHum || !okFuel || !okSpeed || !okRpm) {
         String body = _server.arg("plain");
         body.trim();
 
         if (body.length() > 0) {
             if (!okTemp) okTemp = tryExtractJsonNumber(body, "temperature", temp);
             if (!okHum) okHum = tryExtractJsonNumber(body, "humidity", hum);
+            if (!okFuel) okFuel = tryExtractJsonNumber(body, "fuelLevel", fuelF);
+            if (!okSpeed) okSpeed = tryExtractJsonNumber(body, "stepperSpeed", speed);
+            if (!okRpm) okRpm = tryExtractJsonNumber(body, "stepperRpm", rpm);
         }
     }
 
     // If nothing came, reject
-    if (!okTemp && !okHum) {
+    if (!okTemp && !okHum && !okFuel && !okSpeed && !okRpm) {
         _server.send(400, "application/json",
-                     "{\"ok\":false,\"error\":\"Missing telemetry fields\",\"hint\":\"Send JSON body or args: temperature, humidity\"}");
+                     "{\"ok\":false,\"error\":\"Missing telemetry fields\",\"hint\":\"Send JSON body or args: temperature, humidity, fuelLevel, stepperSpeed, stepperRpm\"}");
         return;
     }
 
@@ -114,10 +127,21 @@ void HttpServer::handleTelemetryPost() {
     if (okTemp) _telemetry.temperature = temp;
     if (okHum) _telemetry.humidity = hum;
 
+    if (okFuel) {
+        // aceita int no payload (vem como float), e valida range simples 0..100
+        int fl = (int) fuelF;
+        if (fl < 0) fl = 0;
+        if (fl > 100) fl = 100;
+        _telemetry.fuelLevel = fl;
+    }
+
+    if (okSpeed) _telemetry.stepperSpeed = speed;
+    if (okRpm) _telemetry.stepperRpm = rpm;
+
     _telemetry.counter++;
     _telemetry.lastUpdateMs = millis();
 
-    // Only set hasData=true when we have BOTH fields valid
+    // Mantém seu comportamento: hasData=true somente quando temp e hum são válidos
     const bool hasTemp = !isnan(_telemetry.temperature);
     const bool hasHum = !isnan(_telemetry.humidity);
     _telemetry.hasData = hasTemp && hasHum;
@@ -138,6 +162,9 @@ void HttpServer::handleTelemetryPost() {
     resp += ",\"updated\":{";
     resp += "\"temperature\":" + String(okTemp ? "true" : "false");
     resp += ",\"humidity\":" + String(okHum ? "true" : "false");
+    resp += ",\"fuelLevel\":" + String(okFuel ? "true" : "false");
+    resp += ",\"stepperSpeed\":" + String(okSpeed ? "true" : "false");
+    resp += ",\"stepperRpm\":" + String(okRpm ? "true" : "false");
     resp += "}";
     resp += ",\"telemetry\":" + makeTelemetryJson(_telemetry);
     resp += "}";
@@ -209,6 +236,12 @@ String HttpServer::makeTelemetryJson(const Telemetry &t) {
     s += "\"hasData\":" + String(t.hasData ? "true" : "false");
     s += ",\"temperature\":" + (isnan(t.temperature) ? String("null") : String(t.temperature, 2));
     s += ",\"humidity\":" + (isnan(t.humidity) ? String("null") : String(t.humidity, 2));
+
+    // novos campos
+    s += ",\"fuelLevel\":" + String(t.fuelLevel < 0 ? "null" : String(t.fuelLevel));
+    s += ",\"stepperSpeed\":" + (isnan(t.stepperSpeed) ? String("null") : String(t.stepperSpeed, 1));
+    s += ",\"stepperRpm\":" + (isnan(t.stepperRpm) ? String("null") : String(t.stepperRpm, 2));
+
     s += ",\"counter\":" + String(t.counter);
     s += ",\"lastUpdateMs\":" + String(t.lastUpdateMs);
     s += "}";

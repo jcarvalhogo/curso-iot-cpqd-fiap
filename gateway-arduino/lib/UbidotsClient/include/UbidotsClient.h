@@ -29,13 +29,26 @@ public:
     explicit UbidotsClient(const Config &cfg);
 
     void begin();
+
     void update(); // call in loop()
 
     // PubSubClient::connected() is NOT const, so this can't be const either.
     bool isConnected();
 
-    // Publishes { "temperature": x, "humidity": y } to /v1.6/devices/<deviceLabel>
+    // Compatibilidade (antigo): publica apenas temperature/humidity
     bool publishTelemetry(float temperature, float humidity);
+
+    // Novo payload:
+    // {"temperature":28.30,"humidity":68.30,"fuelLevel":77,"stepperSpeed":40.0,"stepperRpm":800.00}
+    //
+    // Optional:
+    // - Use NAN for floats you want to omit
+    // - Use fuelLevel < 0 to omit fuelLevel
+    bool publishTelemetry(float temperature,
+                          float humidity,
+                          int fuelLevel,
+                          float stepperSpeed,
+                          float stepperRpm);
 
 private:
     Config _cfg;
@@ -47,7 +60,12 @@ private:
     bool ensureConnected();
 
     String makeTopic() const;
-    String makePayload(float temperature, float humidity) const;
+
+    String makePayload(float temperature,
+                       float humidity,
+                       int fuelLevel,
+                       float stepperSpeed,
+                       float stepperRpm) const;
 };
 
 #endif // GATEWAY_ARDUINO_UBIDOTSCLIENT_H

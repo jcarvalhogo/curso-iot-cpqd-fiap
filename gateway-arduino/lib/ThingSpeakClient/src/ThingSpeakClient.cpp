@@ -37,9 +37,18 @@ bool ThingSpeakClient::telemetryIsPublishable(const HttpServer::Telemetry &t) co
     const bool hasTemp = !isnan(t.temperature);
     const bool hasHum = !isnan(t.humidity);
 
+    // Para payload novo, os extras podem ser opcionais (dependendo do allowPartialTelemetry)
+    const bool hasAnyExtra =
+            (t.fuelLevel >= 0) ||
+            (!isnan(t.stepperSpeed)) ||
+            (!isnan(t.stepperRpm));
+
     if (_cfg.allowPartialTelemetry) {
-        return hasTemp || hasHum;
+        // se parcial: precisa ter pelo menos um campo válido (temp/hum/extras)
+        return hasTemp || hasHum || hasAnyExtra;
     }
+
+    // se não parcial: mantém o comportamento antigo (exige temp + hum)
     return hasTemp && hasHum;
 }
 
@@ -58,29 +67,50 @@ bool ThingSpeakClient::publishTelemetry(const HttpServer::Telemetry &t) {
         return false;
     }
 
-    // Se allowPartialTelemetry==true, envia NaN como "sem campo"
     const float temp = (!isnan(t.temperature)) ? t.temperature : NAN;
     const float hum = (!isnan(t.humidity)) ? t.humidity : NAN;
 
-    return publish(temp, hum);
+    // extras (opcionais)
+    const int fuel = t.fuelLevel; // usar <0 para omitir
+    const float speed = (!isnan(t.stepperSpeed)) ? t.stepperSpeed : NAN;
+    const float rpm = (!isnan(t.stepperRpm)) ? t.stepperRpm : NAN;
+
+    return publish(temp, hum, fuel, speed, rpm);
 }
 
 bool ThingSpeakClient::publish(float temperature, float humidity) {
+    // mantém compatibilidade (somente temp/hum)
+    return publish(temperature, humidity, -1, NAN, NAN);
+}
+
+bool ThingSpeakClient::publish(float temperature,
+                               float humidity,
+                               int fuelLevel,
+                               float stepperSpeed,
+                               float stepperRpm) {
     _lastHttpStatus = -1;
     _lastEntryId = 0;
 
-    // Se não permitir parcial, exige ambos
+    // Validação mínima
     if (!_cfg.allowPartialTelemetry) {
+        // exige pelo menos temp + hum (comportamento antigo)
         if (isnan(temperature) || isnan(humidity)) {
             _lastError = Error::InvalidTelemetry;
             dbgln("[ThingSpeak] invalid telemetry (NaN fields)");
             return false;
         }
     } else {
-        // parcial: precisa ter pelo menos um valor
-        if (isnan(temperature) && isnan(humidity)) {
+        // parcial: precisa ter pelo menos um campo válido entre os 5
+        const bool any =
+                (!isnan(temperature)) ||
+                (!isnan(humidity)) ||
+                (fuelLevel >= 0) ||
+                (!isnan(stepperSpeed)) ||
+                (!isnan(stepperRpm));
+
+        if (!any) {
             _lastError = Error::InvalidTelemetry;
-            dbgln("[ThingSpeak] invalid telemetry (both NaN)");
+            dbgln("[ThingSpeak] invalid telemetry (all fields empty)");
             return false;
         }
     }
@@ -106,8 +136,7 @@ bool ThingSpeakClient::publish(float temperature, float humidity) {
     }
 
     // Monta URL:
-    // /update?api_key=...&field1=...&field2=...
-    // (se parcial, só envia os fields presentes)
+    // /update?api_key=...&field1=...&field2=...&field3=...&field4=...&field5=...
     String url = "/update?api_key=";
     url += _cfg.writeApiKey;
 
@@ -118,6 +147,18 @@ bool ThingSpeakClient::publish(float temperature, float humidity) {
     if (!isnan(humidity)) {
         url += "&field2=";
         url += String(humidity, 2);
+    }
+    if (fuelLevel >= 0) {
+        url += "&field3=";
+        url += String(fuelLevel);
+    }
+    if (!isnan(stepperSpeed)) {
+        url += "&field4=";
+        url += String(stepperSpeed, 1);
+    }
+    if (!isnan(stepperRpm)) {
+        url += "&field5=";
+        url += String(stepperRpm, 2);
     }
 
     client.print(String("GET ") + url + " HTTP/1.1\r\n");

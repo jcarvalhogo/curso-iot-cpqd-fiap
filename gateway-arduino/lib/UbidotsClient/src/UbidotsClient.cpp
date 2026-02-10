@@ -58,8 +58,11 @@ String UbidotsClient::makeTopic() const {
     return topic;
 }
 
-String UbidotsClient::makePayload(float temperature, float humidity) const {
-    // Minimal JSON payload
+String UbidotsClient::makePayload(float temperature,
+                                  float humidity,
+                                  int fuelLevel,
+                                  float stepperSpeed,
+                                  float stepperRpm) const {
     String s = "{";
     bool first = true;
 
@@ -68,22 +71,53 @@ String UbidotsClient::makePayload(float temperature, float humidity) const {
         s += String(temperature, 2);
         first = false;
     }
+
     if (!isnan(humidity)) {
         if (!first) s += ",";
         s += "\"humidity\":";
         s += String(humidity, 2);
+        first = false;
+    }
+
+    if (fuelLevel >= 0) {
+        if (!first) s += ",";
+        s += "\"fuelLevel\":";
+        s += String(fuelLevel);
+        first = false;
+    }
+
+    if (!isnan(stepperSpeed)) {
+        if (!first) s += ",";
+        s += "\"stepperSpeed\":";
+        s += String(stepperSpeed, 1);
+        first = false;
+    }
+
+    if (!isnan(stepperRpm)) {
+        if (!first) s += ",";
+        s += "\"stepperRpm\":";
+        s += String(stepperRpm, 2);
     }
 
     s += "}";
     return s;
 }
 
+// ✅ compatibilidade: mantém chamada antiga do main.cpp funcionando
 bool UbidotsClient::publishTelemetry(float temperature, float humidity) {
+    return publishTelemetry(temperature, humidity, -1, NAN, NAN);
+}
+
+bool UbidotsClient::publishTelemetry(float temperature,
+                                     float humidity,
+                                     int fuelLevel,
+                                     float stepperSpeed,
+                                     float stepperRpm) {
     if (WiFi.status() != WL_CONNECTED) return false;
     if (!ensureConnected()) return false;
 
     const String topic = makeTopic();
-    const String payload = makePayload(temperature, humidity);
+    const String payload = makePayload(temperature, humidity, fuelLevel, stepperSpeed, stepperRpm);
 
     Serial.print("[Ubidots] PUB ");
     Serial.print(topic);

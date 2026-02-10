@@ -15,8 +15,15 @@ class HttpServer {
 public:
     struct Telemetry {
         bool hasData = false;
+
         float temperature = NAN;
         float humidity = NAN;
+
+        // NOVOS CAMPOS (payload novo)
+        int fuelLevel = -1; // <0 = ausente
+        float stepperSpeed = NAN; // NAN = ausente
+        float stepperRpm = NAN; // NAN = ausente
+
         uint32_t counter = 0;
         uint32_t lastUpdateMs = 0;
     };

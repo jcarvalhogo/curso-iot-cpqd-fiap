@@ -33,6 +33,26 @@ static void printHttpUrl() {
     Serial.println("/");
 }
 
+static void logTelemetryShort(const HttpServer::Telemetry &t) {
+    Serial.print("[TEL] T=");
+    Serial.print(t.temperature, 2);
+    Serial.print(" H=");
+    Serial.print(t.humidity, 2);
+
+    Serial.print(" fuel=");
+    Serial.print(t.fuelLevel);
+
+    Serial.print(" speed=");
+    if (isnan(t.stepperSpeed)) Serial.print("null");
+    else Serial.print(t.stepperSpeed, 1);
+
+    Serial.print(" rpm=");
+    if (isnan(t.stepperRpm)) Serial.print("null");
+    else Serial.print(t.stepperRpm, 2);
+
+    Serial.println();
+}
+
 void setup() {
     Serial.begin(115200);
     delay(300);
@@ -73,7 +93,7 @@ void setup() {
     // ThingSpeak client config
     ThingSpeakClient::Config tcfg;
     tcfg.writeApiKey = THINGSPEAK_WRITE_KEY; // coloque no secrets.h
-    tcfg.minIntervalMs = 20000; // pode manter como “safety”, mas agora quem manda é o HttpServer
+    tcfg.minIntervalMs = 20000; // safety (HttpServer controla 30s)
 
     thingspeak = new ThingSpeakClient(tcfg);
     thingspeak->setDebugStream(&Serial);
@@ -88,8 +108,17 @@ void setup() {
     http.onTelemetryUpdated([](const HttpServer::Telemetry &t) {
         if (!t.hasData) return;
 
+        logTelemetryShort(t);
+
         if (ubidots) {
-            const bool ok = ubidots->publishTelemetry(t.temperature, t.humidity);
+            // ✅ Envia o payload completo
+            const bool ok = ubidots->publishTelemetry(
+                t.temperature,
+                t.humidity,
+                t.fuelLevel, // int (-1 se ausente)
+                t.stepperSpeed, // float (NAN se ausente)
+                t.stepperRpm // float (NAN se ausente)
+            );
             Serial.println(ok ? "[Ubidots] Telemetry sent" : "[Ubidots] Send failed");
         }
 
@@ -101,6 +130,8 @@ void setup() {
     // ============================================================
     http.onThingSpeakDue([](const HttpServer::Telemetry &t) {
         if (!t.hasData) return;
+
+        logTelemetryShort(t);
 
         if (thingspeak) {
             const bool ok = thingspeak->publishTelemetry(t);
@@ -138,7 +169,6 @@ void loop() {
 
     // IMPORTANTE:
     // http.update() precisa rodar para processar requisições E para o timer do ThingSpeak (tickThingSpeakTimer).
-    // Você pode chamar http.update() sempre; não depende de Wi-Fi, mas só faz sentido publicar quando conectado.
     http.update();
 
     if (connectedNow) {
