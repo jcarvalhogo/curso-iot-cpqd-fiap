@@ -66,11 +66,11 @@ void HttpServer::handleRoot() {
     _server.send(200, "text/plain",
                  "gateway-arduino\n"
                  "GET  /telemetry\n"
-                 "POST /telemetry\n"
+                 "POST /telemetry (SecureHttp)\n"
                  "\n"
-                 "POST examples:\n"
-                 "  - JSON: {\"temperature\":28.30,\"humidity\":68.30,\"fuelLevel\":77,\"stepperSpeed\":40.0,\"stepperRpm\":800.0}\n"
-                 "  - Args: temperature=28.30&humidity=68.30&fuelLevel=77&stepperSpeed=40.0&stepperRpm=800.0\n");
+                 "POST /telemetry expects:\n"
+                 "  - Body: ciphertext HEX (AES-256-GCM)\n"
+                 "  - Headers: X-Device-Id, X-Timestamp, X-Nonce, X-IV, X-Tag, X-Signature\n");
 }
 
 void HttpServer::handleTelemetryGet() {
@@ -78,9 +78,20 @@ void HttpServer::handleTelemetryGet() {
 }
 
 void HttpServer::handleTelemetryPost() {
-    // Accept payload from:
-    // 1) JSON body
-    // 2) query/form args
+    // SecureHttp:
+    // - body: ciphertext hex string (NOT JSON)
+    // - headers: X-Device-Id, X-Timestamp, X-Nonce, X-IV, X-Tag, X-Signature
+    // Result: plaintext JSON in res.plaintextJson
+
+    auto res = _secureAuth.verifyAndDecrypt(_server, "POST", "/telemetry");
+    if (!res.ok) {
+        _server.send(res.httpCode, "application/json",
+                     "{\"ok\":false,\"error\":\"" + res.error + "\"}");
+        return;
+    }
+
+    String body = res.plaintextJson;
+    body.trim();
 
     bool okTemp = false;
     bool okHum = false;
@@ -95,31 +106,18 @@ void HttpServer::handleTelemetryPost() {
     float speed = NAN;
     float rpm = NAN;
 
-    // 1) Try args first
-    okTemp = tryReadFloatArg(_server, "temperature", temp);
-    okHum = tryReadFloatArg(_server, "humidity", hum);
-    okFuel = tryReadFloatArg(_server, "fuelLevel", fuelF);
-    okSpeed = tryReadFloatArg(_server, "stepperSpeed", speed);
-    okRpm = tryReadFloatArg(_server, "stepperRpm", rpm);
-
-    // 2) If missing, try JSON body
-    if (!okTemp || !okHum || !okFuel || !okSpeed || !okRpm) {
-        String body = _server.arg("plain");
-        body.trim();
-
-        if (body.length() > 0) {
-            if (!okTemp) okTemp = tryExtractJsonNumber(body, "temperature", temp);
-            if (!okHum) okHum = tryExtractJsonNumber(body, "humidity", hum);
-            if (!okFuel) okFuel = tryExtractJsonNumber(body, "fuelLevel", fuelF);
-            if (!okSpeed) okSpeed = tryExtractJsonNumber(body, "stepperSpeed", speed);
-            if (!okRpm) okRpm = tryExtractJsonNumber(body, "stepperRpm", rpm);
-        }
+    if (body.length() > 0) {
+        okTemp = tryExtractJsonNumber(body, "temperature", temp);
+        okHum = tryExtractJsonNumber(body, "humidity", hum);
+        okFuel = tryExtractJsonNumber(body, "fuelLevel", fuelF);
+        okSpeed = tryExtractJsonNumber(body, "stepperSpeed", speed);
+        okRpm = tryExtractJsonNumber(body, "stepperRpm", rpm);
     }
 
     // If nothing came, reject
     if (!okTemp && !okHum && !okFuel && !okSpeed && !okRpm) {
         _server.send(400, "application/json",
-                     "{\"ok\":false,\"error\":\"Missing telemetry fields\",\"hint\":\"Send JSON body or args: temperature, humidity, fuelLevel, stepperSpeed, stepperRpm\"}");
+                     "{\"ok\":false,\"error\":\"Missing telemetry fields\",\"hint\":\"Send encrypted JSON with fields: temperature, humidity, fuelLevel, stepperSpeed, stepperRpm\"}");
         return;
     }
 
@@ -156,7 +154,7 @@ void HttpServer::handleTelemetryPost() {
         _thingSpeakPending = true;
     }
 
-    // Reply com debug + telemetry
+    // Reply com debug + telemetry (não ecoa plaintext recebido)
     String resp = "{";
     resp += "\"ok\":true";
     resp += ",\"updated\":{";
@@ -188,17 +186,6 @@ void HttpServer::tickThingSpeakTimer() {
 void HttpServer::handleNotFound() {
     String msg = "{\"error\":\"Not found\",\"path\":\"" + _server.uri() + "\"}";
     _server.send(404, "application/json", msg);
-}
-
-bool HttpServer::tryReadFloatArg(WebServer &s, const String &name, float &out) {
-    if (!s.hasArg(name)) return false;
-
-    String v = s.arg(name);
-    v.trim();
-    if (v.isEmpty()) return false;
-
-    out = v.toFloat();
-    return true;
 }
 
 // Minimal JSON number extractor for simple payloads.

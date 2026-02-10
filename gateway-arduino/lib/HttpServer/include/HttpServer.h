@@ -16,12 +16,12 @@
 #include <WebServer.h>
 #include <functional>
 
+// SecureHttp (gateway side)
+#include <SecureGatewayAuth.h>
+
 /**
-
  * @brief class HttpServer.
-
  */
-
 class HttpServer {
 public:
     /**
@@ -45,27 +45,18 @@ public:
     using TelemetryCallback = std::function<void(const Telemetry &)>;
 
     /**
-
      * @brief HttpServer.
-
      */
-
     explicit HttpServer(uint16_t port);
 
     /**
-
      * @brief begin.
-
      */
-
     void begin();
 
     /**
-
      * @brief update.
-
      */
-
     void update();
 
     const Telemetry &telemetry() const;
@@ -83,99 +74,62 @@ public:
     void onThingSpeakDue(TelemetryCallback cb);
 
     /**
-
      * @brief setThingSpeakIntervalMs.
-
      */
-
     void setThingSpeakIntervalMs(uint32_t intervalMs);
 
     // Gate interno para evitar chamar ThingSpeak fora do tempo
     bool canSendThingSpeakNow() const;
 
     /**
-
      * @brief markThingSpeakSent.
-
      */
-
     void markThingSpeakSent();
-
-    /**
-
-     * @brief registerRoutes.
-
-     */
 
 private:
     void registerRoutes();
 
     /**
-
      * @brief handleRoot.
-
      */
-
     void handleRoot();
 
     /**
-
      * @brief handleTelemetryGet.
-
      */
-
     void handleTelemetryGet();
 
     /**
-
      * @brief handleTelemetryPost.
-
      */
-
     void handleTelemetryPost();
 
     /**
-
      * @brief handleNotFound.
-
      */
-
     void handleNotFound();
 
     /**
-
-     * @brief tryReadFloatArg.
-
-     */
-
-    bool tryReadFloatArg(WebServer &s, const String &name, float &out);
-
-    /**
-
      * @brief tryExtractJsonNumber.
-
      */
-
     bool tryExtractJsonNumber(const String &json, const char *key, float &out);
 
     /**
-
      * @brief makeTelemetryJson.
-
      */
-
     String makeTelemetryJson(const Telemetry &t);
 
     /**
-
      * @brief tickThingSpeakTimer.
-
      */
-
     void tickThingSpeakTimer();
 
 private:
     WebServer _server;
+
+    // SecureHttp verifier/decryptor (uses SecureHttpConfig.h)
+    SecureGatewayAuth _secureAuth;
+
     Telemetry _telemetry;
 
     TelemetryCallback _onTelemetryUpdated; // Ubidots
