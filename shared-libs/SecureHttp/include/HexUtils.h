@@ -1,3 +1,10 @@
+//
+// Created by Josemar Carvalho on 10/02/26.
+//
+
+#ifndef SHARED_LIBS_HEXUTILS_H
+#define SHARED_LIBS_HEXUTILS_H
+
 #pragma once
 #include <Arduino.h>
 
@@ -34,3 +41,5 @@ bool hexDecodeFixed(const String& hexStr, uint8_t* out, size_t outLen);
  * @return true if string contains only hex chars and has even length; false otherwise.
  */
 bool isHexStringEven(const String& s);
+
+#endif //SHARED_LIBS_HEXUTILS_H

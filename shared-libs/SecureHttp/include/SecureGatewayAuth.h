@@ -1,3 +1,10 @@
+//
+// Created by Josemar Carvalho on 10/02/26.
+//
+
+#ifndef SHARED_LIBS_SECUREGATEWAYAUTH_H
+#define SHARED_LIBS_SECUREGATEWAYAUTH_H
+
 #pragma once
 #include <Arduino.h>
 #include <WebServer.h>
@@ -66,3 +73,5 @@ public:
 private:
   NonceCache _nonceCache;
 };
+
+#endif //SHARED_LIBS_SECUREGATEWAYAUTH_H
