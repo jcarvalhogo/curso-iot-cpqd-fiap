@@ -1,23 +1,22 @@
-//
-// Created by Josemar Carvalho on 08/02/26.
-//
-
-#ifndef VEHICLE_DEVICE_GATEWAYCLIENT_H
-#define VEHICLE_DEVICE_GATEWAYCLIENT_H
-
 #pragma once
 
 #include <Arduino.h>
 
+// SecureHttp (device side)
+#include <SecureDeviceAuth.h>
+
 class GatewayClient {
 public:
     struct Config {
-        const char *host = nullptr; // ex: "192.168.3.12" ou "gateway-arduino.local"
+        const char *host = nullptr;
         uint16_t port = 8045;
         const char *path = "/telemetry";
 
-        uint32_t minIntervalMs = 2000; // evita flood (padrão: 2s)
-        uint32_t timeoutMs = 3000; // timeout de socket/response
+        // SecureHttp
+        const char *deviceId = "vehicle-device-01";
+
+        uint32_t minIntervalMs = 2000; // evita flood
+        uint32_t timeoutMs = 3000; // timeout de response
     };
 
     enum class Error : uint8_t {
@@ -26,9 +25,9 @@ public:
         WifiNotConnected,
         RateLimited,
         ConnectFailed,
-        SendFailed,
         Timeout,
-        BadHttpStatus
+        BadHttpStatus,
+        SecureBuildFailed
     };
 
     explicit GatewayClient(const Config &cfg);
@@ -41,17 +40,13 @@ public:
     // Compatível com versão anterior
     bool publishTelemetry(float temperature, float humidity);
 
-    // Fuel opcional
     bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent);
 
-    // Fuel + stepperSpeed (steps/s) opcional
     bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed);
 
-    // Fuel + stepperSpeed + stepperRpm (rpm) opcionais
     bool publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed,
                           float stepperRpm);
 
-    // Diagnóstico
     Error lastError() const noexcept { return _lastError; }
     int lastHttpStatus() const noexcept { return _lastHttpStatus; }
     uint32_t lastPublishMs() const noexcept { return _lastPublishMs; }
@@ -59,6 +54,8 @@ public:
 private:
     Config _cfg{};
     Stream *_dbg = nullptr;
+
+    SecureDeviceAuth _secure;
 
     Error _lastError = Error::None;
     int _lastHttpStatus = -1;
@@ -69,6 +66,6 @@ private:
     void dbgln(const String &s);
 
     bool isConfigValid() const;
-};
 
-#endif // VEHICLE_DEVICE_GATEWAYCLIENT_H
+    bool sendSecurePost(const String &plaintextJson);
+};

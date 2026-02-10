@@ -1,7 +1,3 @@
-//
-// Created by Josemar Carvalho on 08/02/26.
-//
-
 #include "GatewayClient.h"
 
 #include <WiFi.h>
@@ -23,7 +19,7 @@ GatewayClient::GatewayClient(const Config &cfg) : _cfg(cfg) {
 }
 
 void GatewayClient::begin() {
-    // reservado
+    // reservado (se no futuro SecureDeviceAuth tiver begin/init, pode chamar aqui)
 }
 
 void GatewayClient::update() {
@@ -39,7 +35,10 @@ void GatewayClient::dbgln(const String &s) {
 }
 
 bool GatewayClient::isConfigValid() const {
-    return _cfg.host && _cfg.host[0] != '\0' && _cfg.port != 0 && _cfg.path && _cfg.path[0] != '\0';
+    return _cfg.host && _cfg.host[0] != '\0' &&
+           _cfg.port != 0 &&
+           _cfg.path && _cfg.path[0] != '\0' &&
+           _cfg.deviceId && _cfg.deviceId[0] != '\0';
 }
 
 bool GatewayClient::canPublishNow(uint32_t now) const {
@@ -47,22 +46,18 @@ bool GatewayClient::canPublishNow(uint32_t now) const {
     return (now - _lastPublishMs) >= _cfg.minIntervalMs;
 }
 
-// Wrapper compatível: mantém assinatura antiga
 bool GatewayClient::publishTelemetry(float temperature, float humidity) {
     return publishTelemetry(temperature, humidity, -1, -1.0f, -1.0f);
 }
 
-// Wrapper: fuel apenas
 bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent) {
     return publishTelemetry(temperature, humidity, fuelLevelPercent, -1.0f, -1.0f);
 }
 
-// Wrapper: fuel + stepperSpeed
 bool GatewayClient::publishTelemetry(float temperature, float humidity, int fuelLevelPercent, float stepperSpeed) {
     return publishTelemetry(temperature, humidity, fuelLevelPercent, stepperSpeed, -1.0f);
 }
 
-// Versão completa: fuel + stepperSpeed + stepperRpm (todos opcionais)
 bool GatewayClient::publishTelemetry(float temperature, float humidity,
                                      int fuelLevelPercent,
                                      float stepperSpeed,
@@ -72,7 +67,7 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity,
 
     if (!isConfigValid()) {
         _lastError = Error::InvalidConfig;
-        dbgln("[Gateway] invalid config (host/port/path)");
+        dbgln("[Gateway] invalid config (host/port/path/deviceId)");
         return false;
     }
 
@@ -89,7 +84,7 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity,
         return false;
     }
 
-    // JSON body
+    // plaintext JSON (será criptografado)
     String body = "{";
     body += "\"temperature\":" + String(temperature, 2);
     body += ",\"humidity\":" + String(humidity, 2);
@@ -98,32 +93,36 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity,
         fuelLevelPercent = constrain(fuelLevelPercent, 0, 100);
         body += ",\"fuelLevel\":" + String(fuelLevelPercent);
     }
-
-    if (stepperSpeed >= 0.0f) {
-        body += ",\"stepperSpeed\":" + String(stepperSpeed, 1);
-    }
-
-    if (stepperRpm >= 0.0f) {
-        body += ",\"stepperRpm\":" + String(stepperRpm, 2);
-    }
+    if (stepperSpeed >= 0.0f) body += ",\"stepperSpeed\":" + String(stepperSpeed, 1);
+    if (stepperRpm >= 0.0f) body += ",\"stepperRpm\":" + String(stepperRpm, 2);
 
     body += "}";
 
+    const bool ok = sendSecurePost(body);
+    if (ok) _lastPublishMs = now;
+    return ok;
+}
+
+bool GatewayClient::sendSecurePost(const String &plaintextJson) {
+    auto req = _secure.encryptAndSign(_cfg.deviceId, "POST", _cfg.path, plaintextJson);
+    if (!req.ok) {
+        _lastError = Error::SecureBuildFailed;
+        dbgln(String("[Gateway] secure build failed: ") + req.error);
+        return false;
+    }
+
     WiFiClient client;
 
-    // setTimeout aqui é "best effort" (depende do core), deixa curto pra não travar
+    // "best effort" (Arduino core), a gente controla timeout no loop abaixo
     client.setTimeout(1);
 
-    // Tenta conectar (2 tentativas rápidas)
     bool connected = false;
     for (int attempt = 1; attempt <= 2; attempt++) {
         if (client.connect(_cfg.host, _cfg.port)) {
             connected = true;
             break;
         }
-        // Log detalhado no 1º fail
         if (attempt == 1) {
-            _lastError = Error::ConnectFailed;
             dbgln("[Gateway] connect failed");
             dbgNet(_dbg, _cfg.host, _cfg.port);
         }
@@ -135,16 +134,26 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity,
         return false;
     }
 
-    // HTTP/1.1 POST
+    const String &cipherHex = req.ciphertextHex;
+
+    // HTTP POST SecureHttp
     client.print(String("POST ") + _cfg.path + " HTTP/1.1\r\n");
     client.print(String("Host: ") + _cfg.host + "\r\n");
     client.print("User-Agent: vehicle-device/1.0\r\n");
-    client.print("Content-Type: application/json\r\n");
-    client.print(String("Content-Length: ") + body.length() + "\r\n");
-    client.print("Connection: close\r\n\r\n");
-    client.print(body);
+    client.print("Content-Type: application/octet-stream\r\n");
+    client.print(String("Content-Length: ") + cipherHex.length() + "\r\n");
 
-    // Aguarda status line (timeout em ms real, controlado por nós)
+    client.print(String("X-Device-Id: ") + req.deviceId + "\r\n");
+    client.print(String("X-Timestamp: ") + req.timestamp + "\r\n");
+    client.print(String("X-Nonce: ") + req.nonce + "\r\n");
+    client.print(String("X-IV: ") + req.ivHex + "\r\n");
+    client.print(String("X-Tag: ") + req.tagHex + "\r\n");
+    client.print(String("X-Signature: ") + req.signatureHex + "\r\n");
+
+    client.print("Connection: close\r\n\r\n");
+    client.print(cipherHex);
+
+    // Aguarda status line
     const uint32_t t0 = millis();
     while (!client.available()) {
         if (millis() - t0 > _cfg.timeoutMs) {
@@ -168,22 +177,29 @@ bool GatewayClient::publishTelemetry(float temperature, float humidity,
     }
     _lastHttpStatus = code;
 
-    // Consome headers até linha em branco
+    // Consome headers
     while (client.available()) {
         String line = client.readStringUntil('\n');
         line.trim();
         if (line.length() == 0) break;
     }
 
+    // Lê body (útil em erro)
+    String respBody;
+    const uint32_t t1 = millis();
+    while (millis() - t1 < 250 && client.available()) {
+        respBody += client.readString();
+    }
+
     client.stop();
 
     if (code < 200 || code >= 300) {
         _lastError = Error::BadHttpStatus;
-        dbgln(String("[Gateway] bad HTTP status=") + code);
+        dbgln(String("[Gateway] bad HTTP status=") + code + " resp=" + respBody);
         return false;
     }
 
-    _lastPublishMs = now;
-    dbgln(String("[Gateway] OK HTTP=") + code + " body=" + body);
+    _lastError = Error::None;
+    dbgln(String("[Gateway] OK HTTP=") + code);
     return true;
 }

@@ -1,5 +1,5 @@
 {
-  "name": "Stepper28BYJ48",
+  "name": "AccelerationSimulator",
   "version": "1.0.0",
   "build": {
     "srcDir": "src",

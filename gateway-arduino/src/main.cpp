@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <time.h>
 
 #include "secrets.h"
 
@@ -24,6 +25,46 @@ UbidotsClient *ubidots = nullptr;
 ThingSpeakClient *thingspeak = nullptr;
 
 static bool lastWifiConnected = false;
+
+// -----------------------------
+// NTP / time sync helpers
+// -----------------------------
+static bool isTimeSynced() {
+    time_t now = time(nullptr);
+    return now >= 1700000000;
+}
+
+static void printTimeNow() {
+    time_t now = time(nullptr);
+    if (now < 1700000000) {
+        Serial.printf("[Time] NOT SYNCED (epoch=%lu)\n", (unsigned long) now);
+        return;
+    }
+    struct tm t{};
+    localtime_r(&now, &t);
+    Serial.printf("[Time] %04d-%02d-%02d %02d:%02d:%02d (epoch=%lu)\n",
+                  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                  t.tm_hour, t.tm_min, t.tm_sec,
+                  (unsigned long) now);
+}
+
+static void syncTimeNtp(uint32_t timeoutMs = 15000) {
+    // Trabalhar em epoch (UTC) é suficiente pro SecureHttp.
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "a.st1.ntp.br");
+
+    const uint32_t start = millis();
+    while (!isTimeSynced() && (millis() - start) < timeoutMs) {
+        delay(250);
+    }
+
+    if (isTimeSynced()) {
+        Serial.println("[Time] Gateway NTP synced");
+        printTimeNow();
+    } else {
+        Serial.println("[Time] WARNING: NTP not synced (SecureHttp may reject timestamps)");
+        printTimeNow();
+    }
+}
 
 static void printHttpUrl() {
     Serial.print("[HTTP] Open: http://");
@@ -102,6 +143,13 @@ void setup() {
     Serial.print("[ThingSpeak] Config OK key=");
     Serial.println(ThingSpeakClient::maskKey(THINGSPEAK_WRITE_KEY));
 
+    // Se já conectou no boot, sincroniza o relógio agora
+    if (wifi && wifi->isConnected()) {
+        Serial.println("[WiFi] Connected (boot)");
+        printHttpUrl();
+        syncTimeNtp();
+    }
+
     // ============================================================
     // 1) Ubidots: IMEDIATO quando chega POST /telemetry válido
     // ============================================================
@@ -111,7 +159,6 @@ void setup() {
         logTelemetryShort(t);
 
         if (ubidots) {
-            // ✅ Envia o payload completo
             const bool ok = ubidots->publishTelemetry(
                 t.temperature,
                 t.humidity,
@@ -161,6 +208,9 @@ void loop() {
             Serial.println("[WiFi] Connected");
             printHttpUrl();
             led.setMode(LedStatus::Mode::BLINK_SLOW);
+
+            // ✅ Importante: sincroniza epoch no gateway para validar SecureHttp
+            syncTimeNtp();
         } else {
             Serial.println("[WiFi] Disconnected");
             led.setMode(LedStatus::Mode::OFF);
@@ -168,7 +218,7 @@ void loop() {
     }
 
     // IMPORTANTE:
-    // http.update() precisa rodar para processar requisições E para o timer do ThingSpeak (tickThingSpeakTimer).
+    // http.update() precisa rodar para processar requisições E para o timer do ThingSpeak.
     http.update();
 
     if (connectedNow) {

@@ -1,9 +1,5 @@
-//
-// Created by Josemar Carvalho on 10/02/26.
-//
-
-#ifndef GATEWAY_ARDUINO_SECUREHTTPCONFIG_H
-#define GATEWAY_ARDUINO_SECUREHTTPCONFIG_H
+#ifndef SHARED_LIBS_SECUREHTTP_SECUREHTTPCONFIG_H
+#define SHARED_LIBS_SECUREHTTP_SECUREHTTPCONFIG_H
 
 #pragma once
 #include <Arduino.h>
@@ -11,20 +7,27 @@
 /**
  * @file SecureHttpConfig.h
  * @brief SecureHttp runtime configuration (DO NOT COMMIT).
- *
- * This file contains secrets shared between device and gateway.
- * It must NOT be committed to the repository.
  */
 
-// Identificador do device autorizado
+// ---------------------------------------------------------------------------
+// Device identity
+// ---------------------------------------------------------------------------
+
 static const char *const SECURE_DEVICE_ID = "vehicle-device-01";
 
-// Segredo do HMAC (use algo grande e aleatório)
-static const char *const SECURE_HMAC_SECRET =
-        "CHANGE_ME_USE_A_LONG_RANDOM_SECRET_32_PLUS_CHARS";
+// ---------------------------------------------------------------------------
+// HMAC secret (ASCII)
+// IMPORTANTE:
+// - Precisa ser MACRO (string literal)
+// - Para funcionar com sizeof(...) em tempo de compilação
+// ---------------------------------------------------------------------------
 
-// Chave AES-256 (32 bytes EXATOS)
-// Gere uma chave aleatória real para produção
+#define SECURE_HMAC_SECRET "CHANGE_ME_USE_A_LONG_RANDOM_SECRET_32_PLUS_CHARS"
+
+// ---------------------------------------------------------------------------
+// AES-256 key (32 bytes)
+// ---------------------------------------------------------------------------
+
 static const uint8_t SECURE_AES_KEY[32] = {
     0x10, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
     0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x01,
@@ -32,12 +35,22 @@ static const uint8_t SECURE_AES_KEY[32] = {
     0x8a, 0x9b, 0xac, 0xbd, 0xce, 0xdf, 0xe0, 0xf1
 };
 
-// Janela de tempo aceita (anti-replay) em segundos
-static const uint32_t SECURE_TS_WINDOW_SEC = 180;
+// ---------------------------------------------------------------------------
+// Anti-replay configuration
+// ---------------------------------------------------------------------------
 
-// Cache de nonce (anti-replay)
-static const size_t SECURE_NONCE_CACHE_CAP = 48;
+static const uint32_t SECURE_TS_WINDOW_SEC = 180;
+static const size_t   SECURE_NONCE_CACHE_CAP = 48;
 static const uint32_t SECURE_NONCE_TTL_SEC = 300;
 
+// ---------------------------------------------------------------------------
+// Compatibility symbols expected by SecureDeviceAuth / SecureGatewayAuth
+// (DEVEM ser MACROS por causa dos #ifndef)
+// ---------------------------------------------------------------------------
 
-#endif //GATEWAY_ARDUINO_SECUREHTTPCONFIG_H
+#define SECUREHTTP_AES256_KEY SECURE_AES_KEY
+
+#define SECUREHTTP_HMAC_KEY     ((const uint8_t*)SECURE_HMAC_SECRET)
+#define SECUREHTTP_HMAC_KEY_LEN ((size_t)(sizeof(SECURE_HMAC_SECRET) - 1))
+
+#endif // SHARED_LIBS_SECUREHTTP_SECUREHTTPCONFIG_H

@@ -1,55 +1,40 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <math.h>
+#include <time.h>
 
 #include "secrets.h"
 #include <WiFiManager.h>
-#include <LedStatus.h>
 
 #include <DhtSensor.h>
 #include <GatewayClient.h>
 #include <FuelLevel.h>
 
-#include <AccelStepper.h>
+// Se você quiser usar SECURE_DEVICE_ID aqui, inclua o config do SecureHttp.
+// (Só faça isso se o vehicle-device tiver acesso ao shared-libs/SecureHttp/include)
+#include "SecureHttpConfig.h"
 
-#define LED_PIN 2
 #define DHT_PIN 4
 
 #define FUEL_ADC_PIN 34
-#define SPEED_ADC_PIN 35
+#define SPEED_ADC_PIN 35   // potenciômetro para simular aceleração (ADC)
 
 #define GATEWAY_HOST "192.168.3.12"
 #define GATEWAY_PORT 8045
 
-#define STEPPER_IN1 14
-#define STEPPER_IN2 27
-#define STEPPER_IN3 26
-#define STEPPER_IN4 25
-
 static const uint32_t PRINT_INTERVAL_MS = 5000;
-static const uint32_t SEND_INTERVAL_MS =  5000; // teste visual
-static const uint32_t STEPPER_UPDATE_MS = 80; // mais responsivo
+static const uint32_t SEND_INTERVAL_MS = 5000;
 
-// VISUAL (mais frenético)
-static const float STEPPER_MIN_SPEED = 40.0f; // mínimo já "animado"
-static const float STEPPER_MAX_SPEED = 600.0f; // máximo bem rápido (ajuste se perder passo)
+static const float ACCEL_CURVE_GAMMA = 2.2f;
 
-// Curva de aceleração (sensação)
-// > 1.0 => mais mudança no fim do curso do pot (efeito "acelera mais")
-// < 1.0 => mais mudança no início
-static const float SPEED_CURVE_GAMMA = 2.2f;
+static const float ACCEL_MIN = 0.0f;
+static const float ACCEL_MAX = 100.0f;
 
-// RPM SIMULADO (telemetria)
-static const float SIM_RPM_MIN = 800.0f;
+static const float SIM_RPM_MIN = 0.0f;
 static const float SIM_RPM_MAX = 8000.0f;
 
-// Mesmo conceito de curva para RPM simulado (pode ser diferente, mas mantemos igual)
-static const float RPM_CURVE_GAMMA = 2.2f;
+static const uint8_t EMA_ALPHA_PCT = 15; // 0..100
 
-AccelStepper stepper(AccelStepper::HALF4WIRE,
-                     STEPPER_IN1, STEPPER_IN3, STEPPER_IN2, STEPPER_IN4);
-
-LedStatus led(LED_PIN);
 WiFiManager *wifi = nullptr;
 DhtSensor *dht = nullptr;
 GatewayClient *gateway = nullptr;
@@ -58,7 +43,73 @@ FuelLevel *fuel = nullptr;
 static bool lastWifiConnected = false;
 static uint32_t lastPrintMs = 0;
 static uint32_t lastSendAttemptMs = 0;
-static uint32_t lastStepperUpdateMs = 0;
+
+// -----------------------------
+// NTP / time sync helpers
+// -----------------------------
+static bool isTimeSynced() {
+    time_t now = time(nullptr);
+    return now >= 1700000000;
+}
+
+static void syncTimeNtp(uint32_t timeoutMs = 15000) {
+    // timezone: Brasil -03:00 (ajuste se quiser). Pode deixar 0 e trabalhar em epoch.
+    // setenv("TZ", "BRT+3", 1); tzset();  // opcional
+
+    // servidores padrão + pool
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "a.st1.ntp.br");
+
+    const uint32_t start = millis();
+    while (!isTimeSynced() && (millis() - start) < timeoutMs) {
+        delay(250);
+    }
+
+    if (isTimeSynced()) {
+        time_t now = time(nullptr);
+        struct tm t{};
+        localtime_r(&now, &t);
+        Serial.printf("[Time] Synced: %04d-%02d-%02d %02d:%02d:%02d (epoch=%lu)\n",
+                      t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                      t.tm_hour, t.tm_min, t.tm_sec,
+                      (unsigned long) now);
+    } else {
+        Serial.println("[Time] WARNING: NTP not synced (SecureHttp will fail with time_not_synced)");
+    }
+}
+
+// -----------------------------
+// ADC helpers
+// -----------------------------
+static int readAdcFast(uint8_t pin, uint8_t samples = 5) {
+    if (samples == 0) samples = 1;
+    long sum = 0;
+    for (uint8_t i = 0; i < samples; i++) sum += analogRead(pin);
+    return (int) (sum / samples);
+}
+
+static float clamp01(float t) {
+    if (t < 0.0f) return 0.0f;
+    if (t > 1.0f) return 1.0f;
+    return t;
+}
+
+static float applyCurve01(float t, float gamma) {
+    t = clamp01(t);
+    return powf(t, gamma);
+}
+
+static float adcToAccelPct(int adcRaw) {
+    adcRaw = constrain(adcRaw, 0, 4095);
+    float t = (float) adcRaw / 4095.0f;
+    t = applyCurve01(t, ACCEL_CURVE_GAMMA);
+    return ACCEL_MIN + t * (ACCEL_MAX - ACCEL_MIN);
+}
+
+static float accelToSimRpm(float accelPct) {
+    float t = (accelPct - ACCEL_MIN) / (ACCEL_MAX - ACCEL_MIN);
+    t = clamp01(t);
+    return SIM_RPM_MIN + t * (SIM_RPM_MAX - SIM_RPM_MIN);
+}
 
 static void logGatewayFail() {
     Serial.print("[Gateway] Send failed err=");
@@ -67,41 +118,10 @@ static void logGatewayFail() {
     Serial.println(gateway->lastHttpStatus());
 }
 
-static int readAdcFast(uint8_t pin, uint8_t samples = 3) {
-    if (samples == 0) samples = 1;
-    long sum = 0;
-    for (uint8_t i = 0; i < samples; i++) sum += analogRead(pin);
-    return (int) (sum / samples);
-}
-
-static float applyCurve01(float t, float gamma) {
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    // gamma > 1: acelera mais no final (sensação de "pisar")
-    return powf(t, gamma);
-}
-
-static float speedFromPot(int adcRaw) {
-    adcRaw = constrain(adcRaw, 0, 4095);
-    float t = (float) adcRaw / 4095.0f;
-    t = applyCurve01(t, SPEED_CURVE_GAMMA);
-    return STEPPER_MIN_SPEED + t * (STEPPER_MAX_SPEED - STEPPER_MIN_SPEED);
-}
-
-static float simulatedRpmFromPot(int adcRaw) {
-    adcRaw = constrain(adcRaw, 0, 4095);
-    float t = (float) adcRaw / 4095.0f;
-    t = applyCurve01(t, RPM_CURVE_GAMMA);
-    return SIM_RPM_MIN + t * (SIM_RPM_MAX - SIM_RPM_MIN);
-}
-
 void setup() {
     Serial.begin(115200);
     delay(300);
-    Serial.println("\nBoot vehicle-device");
-
-    led.begin();
-    led.setMode(LedStatus::Mode::BLINK_FAST);
+    Serial.println("\nBoot vehicle-device (no stepper / no led)");
 
     // Wi-Fi
     WiFiManager::Config cfg;
@@ -117,7 +137,16 @@ void setup() {
     wifi->connect();
 
     lastWifiConnected = (wifi && wifi->isConnected());
-    led.setMode(lastWifiConnected ? LedStatus::Mode::BLINK_SLOW : LedStatus::Mode::BLINK_FAST);
+
+    if (lastWifiConnected) {
+        Serial.println("[WiFi] Connected");
+        wifi->printNetInfo(Serial);
+
+        // ✅ NTP sync (necessário pro SecureHttp: SecureDeviceAuth exige epoch válido)
+        syncTimeNtp();
+    } else {
+        Serial.println("[WiFi] Not connected at boot (time sync will be delayed)");
+    }
 
     // DHT
     DhtSensor::Config dcfg;
@@ -139,12 +168,13 @@ void setup() {
     fuel = new FuelLevel(fcfg);
     fuel->begin();
 
-    // Stepper
+    // Potenciômetro (aceleração)
     pinMode(SPEED_ADC_PIN, INPUT);
     analogReadResolution(12);
 
-    stepper.setMaxSpeed(STEPPER_MAX_SPEED);
-    stepper.setSpeed(STEPPER_MIN_SPEED);
+    // Opcional (melhora estabilidade em alguns setups)
+    analogSetPinAttenuation(FUEL_ADC_PIN, ADC_11db);
+    analogSetPinAttenuation(SPEED_ADC_PIN, ADC_11db);
 
     // Gateway
     GatewayClient::Config gcfg;
@@ -156,16 +186,21 @@ void setup() {
 
     gateway = new GatewayClient(gcfg);
     gateway->setDebugStream(&Serial);
+
+    // Se seu GatewayClient tiver suporte a deviceId (não sei sua API),
+    // o ideal é setar aqui para bater com SECURE_DEVICE_ID no gateway.
+    // Exemplo (descomente se existir no seu client):
+    // gateway->setDeviceId(SECURE_DEVICE_ID);
+
     gateway->begin();
 
     Serial.print("[Device] MAC: ");
     Serial.println(WiFi.macAddress());
 
     Serial.println("[Fuel] Calibration tip: observe raw at min/max and update adcMin/adcMax.");
-    Serial.printf("[Stepper] VISUAL: speed %.0f..%.0f steps/s | curve gamma=%.1f\n",
-                  STEPPER_MIN_SPEED, STEPPER_MAX_SPEED, SPEED_CURVE_GAMMA);
-    Serial.printf("[RPM] Simulated RPM: %.0f..%.0f | curve gamma=%.1f\n",
-                  SIM_RPM_MIN, SIM_RPM_MAX, RPM_CURVE_GAMMA);
+    Serial.printf("[Accel] pot on GPIO%d | accel %.0f..%.0f %% | gamma=%.1f | EMA=%u%%\n",
+                  SPEED_ADC_PIN, ACCEL_MIN, ACCEL_MAX, ACCEL_CURVE_GAMMA, EMA_ALPHA_PCT);
+    Serial.printf("[RPM] simulated %.0f..%.0f\n", SIM_RPM_MIN, SIM_RPM_MAX);
 }
 
 void loop() {
@@ -178,10 +213,11 @@ void loop() {
         if (connectedNow) {
             Serial.println("[WiFi] Connected");
             wifi->printNetInfo(Serial);
-            led.setMode(LedStatus::Mode::BLINK_SLOW);
+
+            // ✅ assim que conectar, tenta sincronizar horário
+            if (!isTimeSynced()) syncTimeNtp();
         } else {
             Serial.println("[WiFi] Disconnected");
-            led.setMode(LedStatus::Mode::BLINK_FAST);
         }
     }
 
@@ -189,30 +225,26 @@ void loop() {
 
     const uint32_t now = millis();
 
-    // Stepper update
-    static int speedRaw = 0;
-    static float stepperSpeed = STEPPER_MIN_SPEED;
-    static float stepperRpm = SIM_RPM_MIN;
-
-    if (now - lastStepperUpdateMs >= STEPPER_UPDATE_MS) {
-        lastStepperUpdateMs = now;
-
-        speedRaw = readAdcFast(SPEED_ADC_PIN, 3);
-
-        // Controle visual (stepper real) + curva de aceleração
-        stepperSpeed = speedFromPot(speedRaw);
-        stepper.setSpeed(stepperSpeed);
-
-        // Telemetria (RPM simulado) + curva
-        stepperRpm = simulatedRpmFromPot(speedRaw);
-    }
-
-    // roda sempre para não perder steps
-    stepper.runSpeed();
-
     // Fuel
     const int fuelRaw = (fuel) ? fuel->readRaw() : -1;
     const int fuelPct = (fuel) ? fuel->readPercent() : -1;
+
+    // Accel
+    static int accelRaw = 0;
+    static float accelPct = 0.0f;
+    static float simRpm = 0.0f;
+    static bool accelInit = false;
+
+    {
+        accelRaw = readAdcFast(SPEED_ADC_PIN, 5);
+        const float targetPct = adcToAccelPct(accelRaw);
+
+        const float a = (float) EMA_ALPHA_PCT / 100.0f;
+        accelPct = accelInit ? (a * targetPct + (1.0f - a) * accelPct) : targetPct;
+        accelInit = true;
+
+        simRpm = accelToSimRpm(accelPct);
+    }
 
     // Print
     if (now - lastPrintMs >= PRINT_INTERVAL_MS) {
@@ -226,10 +258,12 @@ void loop() {
         }
 
         Serial.printf("[Fuel] raw=%d | level=%d %%\n", fuelRaw, fuelPct);
+        Serial.printf("[Accel] raw=%d | accel=%.1f %% | rpm(sim)=%.0f\n", accelRaw, accelPct, simRpm);
 
-        const float stepPeriodMs = (stepperSpeed > 0.0f) ? (1000.0f / stepperSpeed) : -1.0f;
-        Serial.printf("[Stepper] raw=%d | speed=%.1f steps/s | rpm(sim)=%.0f | period=%.2f ms/step\n",
-                      speedRaw, stepperSpeed, stepperRpm, stepPeriodMs);
+        // Ajuda a diagnosticar SecureHttp
+        if (!isTimeSynced()) {
+            Serial.println("[Time] NOT SYNCED -> SecureHttp will fail (time_not_synced)");
+        }
     }
 
     // Send telemetry
@@ -239,11 +273,14 @@ void loop() {
 
             const auto &r = dht->data();
 
+            // Reaproveitando contrato atual do gateway:
+            // stepperSpeed -> aceleração (%)
+            // stepperRpm   -> rpm simulado
             const bool ok = gateway->publishTelemetry(
                 r.temperature, r.humidity,
                 fuelPct,
-                stepperSpeed,
-                stepperRpm
+                accelPct,
+                simRpm
             );
 
             if (ok) {
@@ -255,6 +292,4 @@ void loop() {
             }
         }
     }
-
-    led.update();
 }
