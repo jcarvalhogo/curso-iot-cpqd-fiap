@@ -1,0 +1,11 @@
+{
+  "name": "SecureHttp",
+  "version": "1.0.0",
+  "description": "HTTP security layer for ESP32 (AES-256-GCM + HMAC-SHA256 + timestamp/nonce anti-replay)",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  },
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}

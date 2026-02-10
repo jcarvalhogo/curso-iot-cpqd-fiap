@@ -1,0 +1,39 @@
+# Doxygen configuration for SecureHttp
+PROJECT_NAME           = "SecureHttp"
+PROJECT_BRIEF          = "HTTP security layer for ESP32 (AES-256-GCM + HMAC-SHA256 + anti-replay)"
+OUTPUT_DIRECTORY       = docs/out
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                 = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = YES
+
+# Input
+INPUT                  = include src README.md
+FILE_PATTERNS          = *.h *.cpp *.md
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+
+# Doxygen markup
+JAVADOC_AUTOBRIEF      = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+OPTIMIZE_OUTPUT_JAVA   = NO
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+
+# Preprocessing
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = ARDUINO=1
+
+# Sort
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES
+SORT_BY_SCOPE_NAME     = YES
+
+# HTML
+HTML_OUTPUT            = html
