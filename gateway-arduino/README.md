@@ -1,269 +1,189 @@
-# Gateway Arduino – ESP32 HTTP → Ubidots (Technical Documentation)
+# Gateway Arduino – IoT Secure Gateway
 
-## 1. Overview
+## Visão Geral
+O **gateway-arduino** é um gateway IoT embarcado baseado em **ESP32**, responsável por receber telemetria segura de dispositivos IoT, validar autenticidade e integridade das mensagens e encaminhar os dados para plataformas de nuvem como **Ubidots** e **ThingSpeak**.
 
-This project implements an **IoT Gateway running on ESP32**, built with **Arduino Framework + PlatformIO**.
-The gateway exposes an **HTTP REST API** for telemetry ingestion and forwards the received data to **Ubidots Industrial** using **MQTT**.
-
-The design follows embedded best practices:
-- Non-blocking main loop
-- Explicit state machines
-- Modular libraries
-- Clear separation between transport, application logic, and hardware feedback
+O projeto atua como um **ponto intermediário confiável**, isolando dispositivos embarcados da exposição direta à Internet e concentrando as regras de segurança, rate-limit e integração externa.
 
 ---
 
-## 2. System Responsibilities
+## Arquitetura Geral
 
-The gateway is responsible for:
-
-- Managing Wi-Fi connectivity and reconnection
-- Exposing a REST endpoint for telemetry ingestion
-- Normalizing and validating telemetry payloads
-- Publishing telemetry to Ubidots via MQTT
-- Providing visual feedback via LED state machine
-
-This device **does not** read sensors directly.  
-It acts as an **integration bridge** between edge systems and the cloud.
+```
++-------------------+        HTTP Secure (AES-GCM + HMAC)        +----------------------+
+|  vehicle-device   |  --------------------------------------> |   gateway-arduino    |
+|  (ESP32)          |                                           |   (ESP32)            |
+|                   |                                           |                      |
+| - Sensores        |                                           | - SecureHttp Auth    |
+| - SecureDeviceAuth|                                           | - HTTP Server        |
++-------------------+                                           | - Ubidots Client     |
+                                                                | - ThingSpeak Client  |
+                                                                +----------+-----------+
+                                                                           |
+                                    +--------------------------------------+---------------------+
+                                    |                                                            |
+                              +-----v-----+                                               +------v------+
+                              | Ubidots   |                                               | ThingSpeak  |
+                              | (MQTT)    |                                               | (HTTP REST) |
+                              +-----------+                                               +-------------+
+```
 
 ---
 
-## 3. Software Architecture
+## Comunicação e Segurança
 
-### 3.1 High-Level Architecture
+### SecureHttp
+A comunicação entre device e gateway utiliza a biblioteca **SecureHttp**, que implementa múltiplas camadas de segurança:
+
+### Mecanismos Implementados
+
+| Mecanismo | Descrição |
+|---------|----------|
+| AES-256-GCM | Criptografia simétrica autenticada (confidencialidade + integridade) |
+| HMAC-SHA256 | Autenticação do dispositivo |
+| Timestamp (epoch) | Proteção contra replay |
+| Nonce | Identificador único por requisição |
+| AAD | Proteção dos metadados da requisição |
+
+### Canonical String para Assinatura
 
 ```
-main.cpp
- ├── LedStatus        (GPIO / Visual Feedback)
- ├── WiFiManager      (Connectivity + Reconnection)
- ├── HttpServer       (REST API + Telemetry parsing)
- └── UbidotsClient    (MQTT Publisher)
+METHOD
+PATH
+DEVICE_ID
+TIMESTAMP
+NONCE
+IV
+TAG
+CIPHERTEXT_HEX
 ```
-
-### 3.2 Design Principles
-
-- **Single Responsibility**: Each library has one clear role
-- **Pull-based loop**: All services are updated from `loop()`
-- **No dynamic blocking**: No delays in communication paths
-- **Edge-friendly**: Safe reconnection and failure handling
 
 ---
 
-## 4. Directory Structure
+## Sincronização de Tempo (NTP)
 
-```
-gateway-arduino/
-├── src/
-│   └── main.cpp
-│
-├── lib/
-│   ├── LedStatus/
-│   ├── WiFiManager/
-│   ├── HttpServer/
-│   └── UbidotsClient/
-│
-├── include/
-├── test/
-├── secrets.h
-├── platformio.ini
-├── wokwi.toml
-└── README.md
-```
+O gateway utiliza **NTP** para garantir validade temporal das mensagens:
 
-Each folder inside `lib/` is a **local PlatformIO library** with:
-- `include/` → public interface
-- `src/` → implementation
+- Sincroniza o relógio sempre que o Wi-Fi conecta
+- Rejeita mensagens se o epoch não estiver válido
+- Evita falsos positivos de replay
 
 ---
 
-## 5. Wi-Fi Subsystem (WiFiManager)
+## Componentes do Sistema
 
-### Responsibilities
+### WiFiManager
+- Gerenciamento de conexão Wi-Fi
+- Reconexão automática
+- Configuração de hostname e potência TX
 
-- Configure STA mode
-- Connect using credentials
-- Detect connection loss
-- Retry connection with backoff
-- Avoid blocking the main loop
+### HttpServer
+- Servidor HTTP local (porta 8045)
+- Endpoint principal: `POST /telemetry`
+- Validação SecureHttp
+- Orquestra callbacks internos
 
-### Key API
+### SecureGatewayAuth
+- Validação HMAC
+- Checagem de timestamp e nonce
+- Decriptação AES-GCM
+- Bloqueio de mensagens inválidas
 
+### UbidotsClient
+- Envio imediato de telemetria
+- Comunicação MQTT
+- Baixa latência
+
+### ThingSpeakClient
+- Envio periódico via HTTP REST
+- Rate-limit controlado por timer
+
+### LedStatus
+- Indicação visual do estado do gateway
+- Estados de boot, conexão e falha
+
+---
+
+## Fluxo de Execução
+
+### Inicialização
+1. Boot do ESP32
+2. LED em BLINK_FAST
+3. Conexão Wi-Fi
+4. Sincronização NTP
+5. Inicialização do servidor HTTP
+6. Inicialização dos clientes de nuvem
+
+### Recepção de Telemetria
+1. Device envia POST /telemetry
+2. SecureHttp valida e decripta
+3. Dados logados localmente
+4. Envio imediato para Ubidots
+5. Envio periódico para ThingSpeak
+
+---
+
+## Configuração
+
+### secrets.h
 ```cpp
-wifi->begin();
-wifi->connect();
-wifi->update();
-wifi->isConnected();
-```
+#define WIFI_SSID "your-ssid"
+#define WIFI_PASS "your-password"
 
-All reconnection logic is encapsulated.
+#define UBIDOTS_TOKEN "your-ubidots-token"
+#define UBIDOTS_DEVICE_LABEL "gateway-device"
+
+#define THINGSPEAK_WRITE_KEY "your-thingspeak-key"
+```
 
 ---
 
-## 6. LED State Machine (LedStatus)
-
-### Purpose
-
-Provide **hardware-level diagnostics** without Serial Monitor.
-
-### States
-
-| State              | Meaning                    |
-|--------------------|----------------------------|
-| BLINK_FAST         | Boot / Wi-Fi connecting    |
-| BLINK_SLOW         | Wi-Fi connected            |
-| OFF                | Disconnected / error       |
-
-### Implementation
-
-- Timer-based (millis)
-- No blocking delays
-- Updated every loop cycle
+## Porta e Endpoint
+- Porta HTTP: **8045**
+- Endpoint: `/telemetry`
 
 ---
 
-## 7. HTTP Server (HttpServer)
-
-### Transport
-
-- Arduino `WebServer`
-- TCP/IP over Wi-Fi
-- Port: **8045**
-
-### Endpoints
-
-#### `GET /`
-
-Health / discovery endpoint.
-
-#### `GET /telemetry`
-
-Returns last known telemetry snapshot.
-
-#### `POST /telemetry`
-
-Accepts telemetry data.
-
-Supported payloads:
-- JSON body
-- Query parameters
-- Form-urlencoded
-
-### Telemetry Model
-
-```cpp
-struct Telemetry {
-    bool hasData;
-    float temperature;
-    float humidity;
-    uint32_t counter;
-    uint32_t lastUpdateMs;
-};
+## Logs e Diagnóstico
+Exemplo:
+```
+[WiFi] Connected
+[Time] Gateway NTP synced
+[TEL] T=27.10 H=74.30 fuel=70 speed=40.9 rpm=3273
+[Ubidots] Telemetry sent
 ```
 
-### Internal Flow
-
-1. Parse payload
-2. Validate fields
-3. Update telemetry struct
-4. Increment counter
-5. Trigger callback (integration hook)
+Erros comuns:
+- `timestamp_out_of_window`
+- `bad_signature`
+- `decrypt_failed`
 
 ---
 
-## 8. Cloud Integration (UbidotsClient)
-
-### Protocol
-
-- MQTT
-- PubSubClient
-
-### Broker
-
-```
-industrial.api.ubidots.com:1883
-```
-
-### Authentication
-
-- Username = TOKEN
-- Password = TOKEN
-
-### Topic Format
-
-```
-/v1.6/devices/<device_label>
-```
-
-### Payload Format
-
-```json
-{
-  "temperature": 22.50,
-  "humidity": 55.00
-}
-```
-
-### Reliability Strategy
-
-- Lazy connection
-- Automatic reconnect
-- Loop-based keepalive
-- Publish only when connected
-
----
-
-## 9. Main Loop Execution Model
-
-```cpp
-loop() {
-  wifi.update();
-  http.update();
-  ubidots.update();
-  led.update();
-}
-```
-
-No blocking calls, no delays.
-
----
-
-## 10. Environment Handling
-
-### Current Status
-
-- Real hardware: supported
-- Wokwi: configuration present, Wi-Fi not functional
-
-### Planned Strategy
-
-- Compile-time environment selection
-- Mock Wi-Fi and MQTT layers
-- Simulated telemetry sources
-
----
-
-## 11. Build & Toolchain
-
+## Requisitos
+- ESP32
+- Arduino Framework
 - PlatformIO
-- Arduino ESP32 Core
-- PubSubClient
-- Compilation Database (CLion compatible)
+- Wi-Fi com acesso à Internet
+- Conta Ubidots
+- Conta ThingSpeak
 
 ---
 
-## 12. Future Enhancements
-
-- TLS (MQTTS)
-- HTTP authentication
-- Persistent telemetry buffering
-- NVS storage
-- OTA updates
-- Metrics endpoint
-- Watchdog supervision
+## Considerações de Segurança
+- Nunca versionar `secrets.h`
+- Usar chaves longas e aleatórias
+- Gateway é ponto central de confiança
 
 ---
 
-## 13. Author
+## Possíveis Evoluções
+- HTTPS/TLS no servidor local
+- Suporte a múltiplos devices
+- Buffer offline
+- Integração com MQTT broker local
 
-Josemar Carvalho  
-IoT / Embedded Systems Study Project
+---
+
+## Licença
+Projeto educacional / acadêmico – FIAP / CPQD

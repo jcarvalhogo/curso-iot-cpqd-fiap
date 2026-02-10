@@ -9,7 +9,7 @@ WARN_IF_UNDOCUMENTED   = YES
 WARN_NO_PARAMDOC       = YES
 
 # Input
-INPUT                  = include src README.md
+INPUT                  = include src README.md docs/mainpage.md
 FILE_PATTERNS          = *.h *.cpp *.md
 RECURSIVE              = YES
 EXTRACT_ALL            = YES
@@ -23,6 +23,9 @@ OPTIMIZE_OUTPUT_FOR_C  = YES
 OPTIMIZE_OUTPUT_JAVA   = NO
 MARKDOWN_SUPPORT       = YES
 AUTOLINK_SUPPORT       = YES
+
+# Main page
+USE_MDFILE_AS_MAINPAGE  = docs/mainpage.md
 
 # Preprocessing
 ENABLE_PREPROCESSING   = YES

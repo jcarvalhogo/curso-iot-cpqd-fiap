@@ -1,269 +1,185 @@
-# Gateway Arduino – ESP32 HTTP → Ubidots (Technical Documentation)
+# curso-iot-cpqd-fiap
 
-## 1. Overview
+## Visão Geral
 
-This project implements an **IoT Gateway running on ESP32**, built with **Arduino Framework + PlatformIO**.
-The gateway exposes an **HTTP REST API** for telemetry ingestion and forwards the received data to **Ubidots Industrial** using **MQTT**.
+O **curso-iot-cpqd-fiap** é um projeto educacional e técnico desenvolvido no contexto do curso de IoT (FIAP / CPQD),
+com foco em **arquitetura IoT segura, modular e extensível**, utilizando **ESP32**, comunicação HTTP segura,
+integração com serviços em nuvem e boas práticas de engenharia de software embarcado.
 
-The design follows embedded best practices:
-- Non-blocking main loop
-- Explicit state machines
-- Modular libraries
-- Clear separation between transport, application logic, and hardware feedback
+O projeto simula um cenário real de telemetria veicular/industrial, com separação clara entre:
 
----
-
-## 2. System Responsibilities
-
-The gateway is responsible for:
-
-- Managing Wi-Fi connectivity and reconnection
-- Exposing a REST endpoint for telemetry ingestion
-- Normalizing and validating telemetry payloads
-- Publishing telemetry to Ubidots via MQTT
-- Providing visual feedback via LED state machine
-
-This device **does not** read sensors directly.  
-It acts as an **integration bridge** between edge systems and the cloud.
+- **Dispositivo de campo (vehicle-device)**
+- **Gateway IoT (gateway-arduino)**
+- **Bibliotecas compartilhadas (shared-libs)**
 
 ---
 
-## 3. Software Architecture
-
-### 3.1 High-Level Architecture
+## Arquitetura Geral
 
 ```
-main.cpp
- ├── LedStatus        (GPIO / Visual Feedback)
- ├── WiFiManager      (Connectivity + Reconnection)
- ├── HttpServer       (REST API + Telemetry parsing)
- └── UbidotsClient    (MQTT Publisher)
++------------------+        HTTPS (SecureHttp)        +---------------------+
+|                  |  ----------------------------> |                     |
+|  vehicle-device  |                                 |   gateway-arduino   |
+|  (ESP32)         |                                 |   (ESP32 / Wi-Fi)   |
+|                  | <-----------------------------  |                     |
++------------------+                                  +----------+----------+
+                                                                  |
+                                                                  |
+                                            +---------------------+---------------------+
+                                            |                                           |
+                                      Ubidots (MQTT/HTTP)                         ThingSpeak (HTTP)
 ```
-
-### 3.2 Design Principles
-
-- **Single Responsibility**: Each library has one clear role
-- **Pull-based loop**: All services are updated from `loop()`
-- **No dynamic blocking**: No delays in communication paths
-- **Edge-friendly**: Safe reconnection and failure handling
 
 ---
 
-## 4. Directory Structure
+## Componentes do Projeto
 
-```
-gateway-arduino/
-├── src/
-│   └── main.cpp
-│
-├── lib/
-│   ├── LedStatus/
-│   ├── WiFiManager/
-│   ├── HttpServer/
-│   └── UbidotsClient/
-│
-├── include/
-├── test/
-├── secrets.h
-├── platformio.ini
-├── wokwi.toml
-└── README.md
-```
+### 1. vehicle-device
 
-Each folder inside `lib/` is a **local PlatformIO library** with:
-- `include/` → public interface
-- `src/` → implementation
+Dispositivo embarcado responsável por:
+
+- Leitura de sensores físicos e simulados:
+  - Temperatura e umidade (DHT22)
+  - Nível de combustível (ADC)
+  - Aceleração e RPM simulados (potenciômetro)
+- Aplicação de filtros (EMA)
+- Construção de payload JSON
+- Envio de telemetria **segura** ao gateway
+
+🔐 Comunicação protegida via **SecureHttp**.
 
 ---
 
-## 5. Wi-Fi Subsystem (WiFiManager)
+### 2. gateway-arduino
 
-### Responsibilities
+Gateway responsável por:
 
-- Configure STA mode
-- Connect using credentials
-- Detect connection loss
-- Retry connection with backoff
-- Avoid blocking the main loop
+- Receber requisições HTTP do device
+- Validar autenticação, integridade e replay
+- Descriptografar payload
+- Normalizar telemetria
+- Encaminhar dados para:
+  - **Ubidots** (imediato)
+  - **ThingSpeak** (rate-limited)
 
-### Key API
-
-```cpp
-wifi->begin();
-wifi->connect();
-wifi->update();
-wifi->isConnected();
-```
-
-All reconnection logic is encapsulated.
+Também atua como ponto central de controle e observabilidade.
 
 ---
 
-## 6. LED State Machine (LedStatus)
+### 3. shared-libs
 
-### Purpose
+Conjunto de bibliotecas reutilizáveis, projetadas para uso em múltiplos projetos ESP32:
 
-Provide **hardware-level diagnostics** without Serial Monitor.
-
-### States
-
-| State              | Meaning                    |
-|--------------------|----------------------------|
-| BLINK_FAST         | Boot / Wi-Fi connecting    |
-| BLINK_SLOW         | Wi-Fi connected            |
-| OFF                | Disconnected / error       |
-
-### Implementation
-
-- Timer-based (millis)
-- No blocking delays
-- Updated every loop cycle
-
----
-
-## 7. HTTP Server (HttpServer)
-
-### Transport
-
-- Arduino `WebServer`
-- TCP/IP over Wi-Fi
-- Port: **8045**
-
-### Endpoints
-
-#### `GET /`
-
-Health / discovery endpoint.
-
-#### `GET /telemetry`
-
-Returns last known telemetry snapshot.
-
-#### `POST /telemetry`
-
-Accepts telemetry data.
-
-Supported payloads:
-- JSON body
-- Query parameters
-- Form-urlencoded
-
-### Telemetry Model
-
-```cpp
-struct Telemetry {
-    bool hasData;
-    float temperature;
-    float humidity;
-    uint32_t counter;
-    uint32_t lastUpdateMs;
-};
-```
-
-### Internal Flow
-
-1. Parse payload
-2. Validate fields
-3. Update telemetry struct
-4. Increment counter
-5. Trigger callback (integration hook)
+- **SecureHttp**
+  - Autenticação forte
+  - AES-256-GCM + HMAC-SHA256
+  - Proteção contra replay
+- **WiFiManager**
+  - Gerenciamento de conexão Wi-Fi
+  - Reconexão automática
+- **HttpServer**
+  - Endpoints REST
+  - Rate-limit
+- **LedStatus**
+  - Sinalização visual de estados
+- **UbidotsClient / ThingSpeakClient**
+  - Integração com nuvem
 
 ---
 
-## 8. Cloud Integration (UbidotsClient)
+## Segurança (SecureHttp)
 
-### Protocol
+A segurança é um dos pilares centrais do projeto.
 
-- MQTT
-- PubSubClient
+### Técnicas utilizadas
 
-### Broker
+- **Criptografia:** AES-256-GCM
+- **Autenticação:** HMAC-SHA256
+- **Anti-replay:** Timestamp + Nonce
+- **Integridade:** Tag GCM + assinatura
+- **AAD:** Metadados autenticados (device, path, método, nonce)
 
-```
-industrial.api.ubidots.com:1883
-```
+### Benefícios
 
-### Authentication
-
-- Username = TOKEN
-- Password = TOKEN
-
-### Topic Format
-
-```
-/v1.6/devices/<device_label>
-```
-
-### Payload Format
-
-```json
-{
-  "temperature": 22.50,
-  "humidity": 55.00
-}
-```
-
-### Reliability Strategy
-
-- Lazy connection
-- Automatic reconnect
-- Loop-based keepalive
-- Publish only when connected
+- Confidencialidade dos dados
+- Integridade garantida
+- Autenticidade do dispositivo
+- Proteção contra ataques de replay
+- Independência de TLS (ideal para IoT)
 
 ---
 
-## 9. Main Loop Execution Model
+## Estrutura de Diretórios
 
-```cpp
-loop() {
-  wifi.update();
-  http.update();
-  ubidots.update();
-  led.update();
-}
+```
+curso-iot-cpqd-fiap/
+├── gateway-arduino/
+│   ├── src/
+│   └── secrets.h
+├── vehicle-device/
+│   ├── src/
+│   └── secrets.h
+└── shared-libs/
+    ├── SecureHttp/
+    ├── WiFiManager/
+    ├── LedStatus/
+    ├── HttpServer/
+    └── ...
 ```
 
-No blocking calls, no delays.
+---
+
+## Fluxo de Execução (Resumo)
+
+1. vehicle-device inicializa sensores e Wi-Fi
+2. Coleta dados e gera JSON
+3. Criptografa e assina payload
+4. Envia POST `/telemetry`
+5. gateway valida e descriptografa
+6. Telemetria é registrada e publicada na nuvem
 
 ---
 
-## 10. Environment Handling
+## Objetivos Educacionais
 
-### Current Status
+Este projeto demonstra, de forma prática:
 
-- Real hardware: supported
-- Wokwi: configuration present, Wi-Fi not functional
-
-### Planned Strategy
-
-- Compile-time environment selection
-- Mock Wi-Fi and MQTT layers
-- Simulated telemetry sources
+- Arquitetura IoT realista
+- Segurança aplicada em sistemas embarcados
+- Modularização e reuso de código
+- Integração edge → cloud
+- Boas práticas de firmware ESP32
 
 ---
 
-## 11. Build & Toolchain
+## Público-Alvo
 
-- PlatformIO
-- Arduino ESP32 Core
-- PubSubClient
-- Compilation Database (CLion compatible)
-
----
-
-## 12. Future Enhancements
-
-- TLS (MQTTS)
-- HTTP authentication
-- Persistent telemetry buffering
-- NVS storage
-- OTA updates
-- Metrics endpoint
-- Watchdog supervision
+- Estudantes de IoT e Sistemas Embarcados
+- Desenvolvedores ESP32
+- Engenheiros de Software / Firmware
+- Projetos acadêmicos (FIAP / CPQD)
 
 ---
 
-## 13. Author
+## Observações Importantes
 
-Josemar Carvalho  
-IoT / Embedded Systems Study Project
+⚠️ Arquivos `secrets.h` **não devem ser versionados**  
+⚠️ Chaves e tokens são apenas exemplos  
+⚠️ Projeto voltado para fins didáticos e POCs
+
+---
+
+## Próximos Passos (Evolução)
+
+- MQTT seguro (TLS)
+- Provisionamento dinâmico de chaves
+- OTA seguro
+- Dashboard próprio
+- Persistência local no gateway
+- Certificados por dispositivo
+
+---
+
+## Licença
+
+Projeto educacional desenvolvido no contexto do curso IoT – FIAP / CPQD.
