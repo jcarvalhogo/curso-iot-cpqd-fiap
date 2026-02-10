@@ -1,3 +1,8 @@
+/**
+ * @file ThingSpeakClient.h
+ * @brief ThingSpeakClient.h API.
+ */
+
 //
 // Created by Josemar Carvalho on 08/02/26.
 //
@@ -10,8 +15,17 @@
 #include <Arduino.h>
 #include <HttpServer.h>
 
+/**
+
+ * @brief class ThingSpeakClient.
+
+ */
+
 class ThingSpeakClient {
 public:
+    /**
+     * @brief struct Config.
+     */
     struct Config {
         const char *writeApiKey = nullptr;
 
@@ -45,17 +59,44 @@ public:
         WriteFailed // entry_id <= 0
     };
 
+    /**
+
+     * @brief ThingSpeakClient.
+
+     */
+
     explicit ThingSpeakClient(const Config &cfg);
 
+    /**
+
+     * @brief begin.
+
+     */
+
     void begin(); // reservado (mantém padrão)
+    /**
+     * @brief update.
+     */
     void update(); // reservado
+
+    /**
+
+     * @brief setDebugStream.
+
+     */
 
     void setDebugStream(Stream *s);
 
     // Publica usando a telemetria do gateway.
+    /**
+     * @brief publishTelemetry.
+     */
     bool publishTelemetry(const HttpServer::Telemetry &t);
 
     // Publica direto (field1=temperature, field2=humidity).
+    /**
+     * @brief publish.
+     */
     bool publish(float temperature, float humidity);
 
     // Publica direto (field1..field5).
@@ -64,6 +105,9 @@ public:
     // Opcionais:
     // - Use NAN para floats que deseja omitir
     // - Use fuelLevel < 0 para omitir fuelLevel
+    /**
+     * @brief publish.
+     */
     bool publish(float temperature,
                  float humidity,
                  int fuelLevel,
@@ -79,6 +123,12 @@ public:
 
     uint32_t lastPublishMs() const noexcept;
 
+    /**
+
+     * @brief maskKey.
+
+     */
+
     static String maskKey(const char *key);
 
 private:
@@ -91,6 +141,12 @@ private:
     uint32_t _lastPublishMs = 0;
 
     bool canPublishNow(uint32_t now) const;
+
+    /**
+
+     * @brief dbgln.
+
+     */
 
     void dbgln(const String &s);
 

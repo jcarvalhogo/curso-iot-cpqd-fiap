@@ -1,3 +1,8 @@
+/**
+ * @file HttpServer.h
+ * @brief HttpServer.h API.
+ */
+
 //
 // Created by Josemar Carvalho on 07/02/26.
 //
@@ -11,8 +16,17 @@
 #include <WebServer.h>
 #include <functional>
 
+/**
+
+ * @brief class HttpServer.
+
+ */
+
 class HttpServer {
 public:
+    /**
+     * @brief struct Telemetry.
+     */
     struct Telemetry {
         bool hasData = false;
 
@@ -30,43 +44,133 @@ public:
 
     using TelemetryCallback = std::function<void(const Telemetry &)>;
 
+    /**
+
+     * @brief HttpServer.
+
+     */
+
     explicit HttpServer(uint16_t port);
 
+    /**
+
+     * @brief begin.
+
+     */
+
     void begin();
+
+    /**
+
+     * @brief update.
+
+     */
 
     void update();
 
     const Telemetry &telemetry() const;
 
     // Ubidots (imediato)
+    /**
+     * @brief onTelemetryUpdated.
+     */
     void onTelemetryUpdated(TelemetryCallback cb);
 
     // ThingSpeak (a cada 30s)
+    /**
+     * @brief onThingSpeakDue.
+     */
     void onThingSpeakDue(TelemetryCallback cb);
+
+    /**
+
+     * @brief setThingSpeakIntervalMs.
+
+     */
 
     void setThingSpeakIntervalMs(uint32_t intervalMs);
 
     // Gate interno para evitar chamar ThingSpeak fora do tempo
     bool canSendThingSpeakNow() const;
 
+    /**
+
+     * @brief markThingSpeakSent.
+
+     */
+
     void markThingSpeakSent();
+
+    /**
+
+     * @brief registerRoutes.
+
+     */
 
 private:
     void registerRoutes();
 
+    /**
+
+     * @brief handleRoot.
+
+     */
+
     void handleRoot();
+
+    /**
+
+     * @brief handleTelemetryGet.
+
+     */
 
     void handleTelemetryGet();
 
+    /**
+
+     * @brief handleTelemetryPost.
+
+     */
+
     void handleTelemetryPost();
+
+    /**
+
+     * @brief handleNotFound.
+
+     */
 
     void handleNotFound();
 
+    /**
+
+     * @brief tryReadFloatArg.
+
+     */
+
     bool tryReadFloatArg(WebServer &s, const String &name, float &out);
+
+    /**
+
+     * @brief tryExtractJsonNumber.
+
+     */
 
     bool tryExtractJsonNumber(const String &json, const char *key, float &out);
 
+    /**
+
+     * @brief makeTelemetryJson.
+
+     */
+
     String makeTelemetryJson(const Telemetry &t);
+
+    /**
+
+     * @brief tickThingSpeakTimer.
+
+     */
 
     void tickThingSpeakTimer();
 

@@ -1,0 +1,27 @@
+PROJECT_NAME           = "UbidotsClient"
+PROJECT_BRIEF          = "API documentation"
+OUTPUT_DIRECTORY       = docs/out
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                 = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = YES
+
+INPUT                  = include src README.md
+FILE_PATTERNS          = *.h *.hpp *.cpp *.c *.md
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+
+JAVADOC_AUTOBRIEF      = YES
+OPTIMIZE_OUTPUT_FOR_C  = YES
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = ARDUINO=1
+
+HTML_OUTPUT            = html

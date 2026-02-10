@@ -1,3 +1,8 @@
+/**
+ * @file UbidotsClient.h
+ * @brief UbidotsClient.h API.
+ */
+
 //
 // Created by Josemar Carvalho on 07/02/26.
 //
@@ -12,8 +17,17 @@
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 
+/**
+
+ * @brief class UbidotsClient.
+
+ */
+
 class UbidotsClient {
 public:
+    /**
+     * @brief struct Config.
+     */
     struct Config {
         const char *token = nullptr;
         const char *deviceLabel = nullptr;
@@ -26,16 +40,40 @@ public:
         uint32_t reconnectIntervalMs = 3000;
     };
 
+    /**
+
+     * @brief UbidotsClient.
+
+     */
+
     explicit UbidotsClient(const Config &cfg);
 
+    /**
+
+     * @brief begin.
+
+     */
+
     void begin();
+
+    /**
+
+     * @brief update.
+
+     */
 
     void update(); // call in loop()
 
     // PubSubClient::connected() is NOT const, so this can't be const either.
+    /**
+     * @brief isConnected.
+     */
     bool isConnected();
 
     // Compatibilidade (antigo): publica apenas temperature/humidity
+    /**
+     * @brief publishTelemetry.
+     */
     bool publishTelemetry(float temperature, float humidity);
 
     // Novo payload:
@@ -44,6 +82,9 @@ public:
     // Optional:
     // - Use NAN for floats you want to omit
     // - Use fuelLevel < 0 to omit fuelLevel
+    /**
+     * @brief publishTelemetry.
+     */
     bool publishTelemetry(float temperature,
                           float humidity,
                           int fuelLevel,
@@ -56,6 +97,12 @@ private:
     PubSubClient _mqtt;
 
     uint32_t _lastReconnectAttempt = 0;
+
+    /**
+
+     * @brief ensureConnected.
+
+     */
 
     bool ensureConnected();
 
