@@ -17,11 +17,11 @@ O projeto simula um cenÃ¡rio real de telemetria veicular/industrial, com separaÃ
 ## Arquitetura Geral
 
 ```
-+------------------+        HTTPS (SecureHttp)        +---------------------+
-|                  |  ----------------------------> |                     |
-|  vehicle-device  |                                 |   gateway-arduino   |
-|  (ESP32)         |                                 |   (ESP32 / Wi-Fi)   |
-|                  | <-----------------------------  |                     |
++------------------+        HTTP (SecureHttp)         +---------------------+
+|                  |  ---------------------------->   |                     |
+|  vehicle-device  |                                  |   gateway-arduino   |
+|  (ESP32)         |                                  |   (ESP32 / Wi-Fi)   |
+|                  | <-----------------------------   |                     |
 +------------------+                                  +----------+----------+
                                                                   |
                                                                   |
