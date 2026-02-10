@@ -124,6 +124,12 @@ private:
      */
     void tickThingSpeakTimer();
 
+    // ====== Security helpers ======
+    void setupSecureHeadersCollection();
+
+    // ❗removido const (WebServer::client() não é const)
+    bool isClientAllowed();
+
 private:
     WebServer _server;
 

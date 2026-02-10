@@ -8,7 +8,40 @@ HttpServer::HttpServer(uint16_t port)
     : _server(port) {
 }
 
+void HttpServer::setupSecureHeadersCollection() {
+    // IMPORTANTE: WebServer só expõe headers "coletados"
+    static const char *keys[] = {
+        "X-Device-Id",
+        "X-Timestamp",
+        "X-Nonce",
+        "X-IV",
+        "X-Tag",
+        "X-Signature",
+        "Content-Type",
+        "Origin"
+    };
+
+    _server.collectHeaders(keys, sizeof(keys) / sizeof(keys[0]));
+}
+
+// ✅ removido const aqui
+bool HttpServer::isClientAllowed() {
+    IPAddress rip = _server.client().remoteIP();
+
+    // Permite apenas 192.168.3.0/24 (ajuste conforme sua rede)
+    const bool sameSubnet = (rip[0] == 192) && (rip[1] == 168) && (rip[2] == 3);
+    if (!sameSubnet) return false;
+
+    // Se quiser travar em um IP fixo do vehicle-device, descomente:
+    // const IPAddress allowedDevice(192, 168, 3, 20);
+    // if (rip != allowedDevice) return false;
+
+    return true;
+}
+
 void HttpServer::begin() {
+    setupSecureHeadersCollection(); // <<< garante leitura dos headers X-*
+
     registerRoutes();
     _server.begin();
 
@@ -78,11 +111,30 @@ void HttpServer::handleTelemetryGet() {
 }
 
 void HttpServer::handleTelemetryPost() {
-    // SecureHttp:
-    // - body: ciphertext hex string (NOT JSON)
-    // - headers: X-Device-Id, X-Timestamp, X-Nonce, X-IV, X-Tag, X-Signature
-    // Result: plaintext JSON in res.plaintextJson
+    // 1) Restrição de origem (por IP)
+    if (!isClientAllowed()) {
+        _server.send(403, "application/json", "{\"ok\":false,\"error\":\"forbidden_origin\"}");
+        return;
+    }
 
+    // 2) Bloqueio explícito de JSON plain (exige SecureHttp)
+    const String ct = _server.header("Content-Type");
+    const bool looksJson = (ct.indexOf("application/json") >= 0);
+
+    const bool hasSecureHeaders =
+            !_server.header("X-Device-Id").isEmpty() &&
+            !_server.header("X-Timestamp").isEmpty() &&
+            !_server.header("X-Nonce").isEmpty() &&
+            !_server.header("X-IV").isEmpty() &&
+            !_server.header("X-Tag").isEmpty() &&
+            !_server.header("X-Signature").isEmpty();
+
+    if (looksJson && !hasSecureHeaders) {
+        _server.send(400, "application/json", "{\"ok\":false,\"error\":\"secure_required\"}");
+        return;
+    }
+
+    // 3) SecureHttp: verify + decrypt
     auto res = _secureAuth.verifyAndDecrypt(_server, "POST", "/telemetry");
     if (!res.ok) {
         _server.send(res.httpCode, "application/json",
@@ -126,7 +178,6 @@ void HttpServer::handleTelemetryPost() {
     if (okHum) _telemetry.humidity = hum;
 
     if (okFuel) {
-        // aceita int no payload (vem como float), e valida range simples 0..100
         int fl = (int) fuelF;
         if (fl < 0) fl = 0;
         if (fl > 100) fl = 100;
