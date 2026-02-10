@@ -4,6 +4,11 @@
 
 #include "WiFiManager.h"
 
+/**
+ * @file WiFiManager.cpp
+ * @brief Implementation of WiFiManager.
+ */
+
 WiFiManager *WiFiManager::_self = nullptr;
 
 WiFiManager::WiFiManager(const Config &cfg) : _cfg(cfg) {
