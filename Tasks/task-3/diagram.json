@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "author": "Josemar Carvalho",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -19.2, "left": 139.24, "attrs": {} },
+    { "type": "board-grove-oled-sh1107", "id": "oled1", "top": 9.37, "left": 329.5, "attrs": {} },
+    { "type": "wokwi-neopixel", "id": "rgb1", "top": -61.1, "left": 181.4, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "dht1", "top": -230.1, "left": 292.2, "attrs": {} }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "rgb1:VSS", "esp:GND.2", "green", [ "v-0.9", "h66.4", "v57.6" ] ],
+    [ "rgb1:VDD", "esp:3V3", "green", [ "h-67.2", "v67.2" ] ],
+    [ "oled1:GND.1", "esp:GND.2", "black", [ "h19.2", "v-115.2", "h-278.4" ] ],
+    [ "oled1:VCC", "esp:3V3", "red", [ "h28.8", "v-163.2", "h-422.4", "v76.8" ] ],
+    [ "esp:21", "oled1:SDA", "green", [ "h67.2", "v-67.2", "h230.4", "v115.2" ] ],
+    [ "esp:22", "oled1:SCL.1", "green", [ "h57.6", "v-48", "h249.6", "v134.4" ] ],
+    [ "dht1:VCC", "esp:3V3", "red", [ "v38.4", "h-192", "v86.4" ] ],
+    [ "dht1:GND", "esp:GND.2", "black", [ "v76.8", "h-76.8" ] ],
+    [ "dht1:SDA", "esp:4", "green", [ "v0" ] ],
+    [ "esp:5", "rgb1:DIN", "green", [ "h48", "v-153.6" ] ]
+  ],
+  "dependencies": {}
+}

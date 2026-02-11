@@ -1,0 +1,26 @@
+{
+  "name": "Dht22Sensor",
+  "version": "1.0.0",
+  "description": "Leitura do DHT22 (ESP32/Arduino) com intervalo minimo e ultimo estado",
+  "keywords": [
+    "dht22",
+    "sensor",
+    "temperature",
+    "humidity",
+    "esp32"
+  ],
+  "authors": [
+    {
+      "name": "Josemar Carvalho"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": [
+    {
+      "name": "DHT sensor library for ESPx",
+      "version": "^1.19.0"
+    }
+  ]
+}
