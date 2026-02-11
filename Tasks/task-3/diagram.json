@@ -6,7 +6,15 @@
     { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -19.2, "left": 139.24, "attrs": {} },
     { "type": "board-grove-oled-sh1107", "id": "oled1", "top": 9.37, "left": 329.5, "attrs": {} },
     { "type": "wokwi-neopixel", "id": "rgb1", "top": -61.1, "left": 181.4, "attrs": {} },
-    { "type": "wokwi-dht22", "id": "dht1", "top": -230.1, "left": 292.2, "attrs": {} }
+    { "type": "wokwi-dht22", "id": "dht1", "top": -230.1, "left": 292.2, "attrs": {} },
+    {
+      "type": "wokwi-gas-sensor",
+      "id": "gas1",
+      "top": -205.6,
+      "left": -35.5,
+      "rotate": 90,
+      "attrs": {}
+    }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -20,7 +28,11 @@
     [ "dht1:VCC", "esp:3V3", "red", [ "v38.4", "h-192", "v86.4" ] ],
     [ "dht1:GND", "esp:GND.2", "black", [ "v76.8", "h-76.8" ] ],
     [ "dht1:SDA", "esp:4", "green", [ "v0" ] ],
-    [ "esp:5", "rgb1:DIN", "green", [ "h48", "v-153.6" ] ]
+    [ "esp:5", "rgb1:DIN", "green", [ "h48", "v-153.6" ] ],
+    [ "esp:34", "gas1:AOUT", "green", [ "h0" ] ],
+    [ "esp:5V", "gas1:VCC", "red", [ "h0" ] ],
+    [ "esp:CMD", "gas1:GND", "green", [ "h0" ] ],
+    [ "esp:27", "gas1:DOUT", "green", [ "h0" ] ]
   ],
   "dependencies": {}
 }
