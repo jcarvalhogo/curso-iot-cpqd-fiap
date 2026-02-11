@@ -1,85 +1,87 @@
 #include <Arduino.h>
+#include "OledSh1107.h"
 #include "LedRgbStatus.h"
 
-#ifndef RGB_STATUS_PIN
-#define RGB_STATUS_PIN 38
-#endif
+// Ajuste conforme seus pinos I2C reais no ESP32-S3
+static constexpr uint8_t I2C_SDA = 8;
+static constexpr uint8_t I2C_SCL = 9;
+static constexpr uint8_t OLED_ADDR = 0x3C;
 
-#ifndef RGB_STATUS_BRIGHTNESS
-#define RGB_STATUS_BRIGHTNESS 32
-#endif
+OledSh1107 oled(I2C_SDA, I2C_SCL, OLED_ADDR);
+LedRgbStatus led; // usa defaults via build_flags (pin 38 etc.)
 
-LedRgbStatus led(RGB_STATUS_PIN, RGB_STATUS_BRIGHTNESS);
+enum class State : uint8_t { Boot, Connecting, Online, Error };
 
-enum class SystemState {
-    Boot,
-    Connecting,
-    Online,
-    Error
-};
+static State st = State::Boot;
+static uint32_t t0 = 0;
+static bool oledOk = false;
 
-SystemState currentState = SystemState::Boot;
-uint32_t stateStart = 0;
+static void setState(State s) {
+    st = s;
+    t0 = millis();
 
-void setState(SystemState newState) {
-    currentState = newState;
-    stateStart = millis();
-
-    switch (currentState) {
-        case SystemState::Boot:
-            Serial.println("[SYS] Booting...");
+    switch (st) {
+        case State::Boot:
+            Serial.println("[SYS] Boot...");
             led.statusBoot();
+            if (oledOk) oled.drawBootScreen("ESP32-S3");
             break;
 
-        case SystemState::Connecting:
-            Serial.println("[SYS] Connecting WiFi...");
+        case State::Connecting:
+            Serial.println("[SYS] WiFi connecting...");
             led.statusWifiConnecting();
+            if (oledOk) oled.drawStatus3("WiFi:", "Conectando...", "Aguarde");
             break;
 
-        case SystemState::Online:
+        case State::Online:
             Serial.println("[SYS] Online.");
             led.statusOnline();
+            if (oledOk) oled.drawStatus3("WiFi:", "Conectado", "IP: 192.168.0.10");
             break;
 
-        case SystemState::Error:
+        case State::Error:
             Serial.println("[SYS] ERROR!");
             led.statusError();
+            if (oledOk) oled.drawStatus3("Sistema:", "ERRO", "Verifique logs");
             break;
     }
 }
 
 void setup() {
     Serial.begin(115200);
-    delay(500);
+    delay(400);
+
+    Serial.println("\n[APP] Starting...");
 
     led.begin();
 
-    setState(SystemState::Boot);
+    oledOk = oled.begin();
+    Serial.printf("[OLED] begin: %s (SDA=%u SCL=%u addr=0x%02X)\n",
+                  oledOk ? "OK" : "FAIL", I2C_SDA, I2C_SCL, OLED_ADDR);
+
+    setState(State::Boot);
 }
 
 void loop() {
     led.update();
 
-    uint32_t now = millis();
+    const uint32_t now = millis();
 
-    switch (currentState) {
-        case SystemState::Boot:
-            if (now - stateStart > 2000) {
-                setState(SystemState::Connecting);
-            }
+    switch (st) {
+        case State::Boot:
+            if (now - t0 > 1500) setState(State::Connecting);
             break;
 
-        case SystemState::Connecting:
-            if (now - stateStart > 4000) {
-                setState(SystemState::Online);
-            }
+        case State::Connecting:
+            // Simulação: após 4s "conectou"
+            if (now - t0 > 4000) setState(State::Online);
             break;
 
-        case SystemState::Online:
-            // Aqui ficaria normal até acontecer erro
+        case State::Online:
+            // aqui ficaria rodando a aplicação real
             break;
 
-        case SystemState::Error:
+        case State::Error:
             break;
     }
 }

@@ -10,14 +10,25 @@
       "left": -24.23,
       "attrs": {}
     },
-    { "type": "wokwi-dht22", "id": "dht1", "top": -297.3, "left": -168.6, "attrs": {} }
+    { "type": "wokwi-dht22", "id": "dht1", "top": -297.3, "left": -168.6, "attrs": {} },
+    {
+      "type": "board-grove-oled-sh1107",
+      "id": "oled1",
+      "top": -0.23,
+      "left": -304.1,
+      "attrs": {}
+    }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
     [ "esp:RX", "$serialMonitor:TX", "", [] ],
     [ "dht1:VCC", "esp:3V3.2", "red", [ "v144", "h134.45" ] ],
     [ "esp:GND.4", "dht1:GND", "black", [ "h38.4", "v-249.6", "h-230.4" ] ],
-    [ "dht1:SDA", "esp:4", "green", [ "v0" ] ]
+    [ "dht1:SDA", "esp:4", "green", [ "v0" ] ],
+    [ "esp:GND.3", "oled1:GND.1", "black", [ "h48", "v76.8", "h-192", "v-144" ] ],
+    [ "oled1:VCC", "esp:3V3.1", "red", [ "h19.2", "v-134.4" ] ],
+    [ "oled1:SDA", "esp:8", "green", [ "h38.4", "v-38.4" ] ],
+    [ "oled1:SCL.1", "esp:9", "green", [ "h67.2", "v-19.2" ] ]
   ],
   "dependencies": {}
 }
