@@ -27,7 +27,7 @@ O projeto foi desenvolvido no contexto do curso IoT (CPQD/FIAP) e tem como foco:
 |  SecureHttp       |
 +---------+---------+
           |
-          | HTTPS-like (HTTP + HMAC + AES-GCM)
+          | (HTTP + HMAC + AES-GCM)
           |
 +---------v---------+
 | gateway-arduino   |
