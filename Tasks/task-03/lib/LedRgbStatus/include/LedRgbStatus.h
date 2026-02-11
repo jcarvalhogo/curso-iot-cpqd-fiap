@@ -2,13 +2,29 @@
 // Created by Josemar Carvalho on 11/02/26.
 //
 
-#ifndef TASK_03_LEDRGBSTATUS_H
-#define TASK_03_LEDRGBSTATUS_H
-
 #pragma once
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
+
+// Permite configurar via build_flags (PlatformIO)
+#ifndef RGB_STATUS_PIN
+#define RGB_STATUS_PIN 38
+#endif
+
+#ifndef RGB_STATUS_BRIGHTNESS
+#define RGB_STATUS_BRIGHTNESS 32
+#endif
+
+// Por padrão GRB (no seu DevKitC-1 funcionou com GRB)
+#ifndef RGB_STATUS_COLOR_ORDER
+#define RGB_STATUS_COLOR_ORDER NEO_GRB
+#endif
+
+// Permite trocar a frequência se precisar (normal WS2812 = 800kHz)
+#ifndef RGB_STATUS_SIGNAL_FREQ
+#define RGB_STATUS_SIGNAL_FREQ NEO_KHZ800
+#endif
 
 class LedRgbStatus {
 public:
@@ -32,7 +48,9 @@ public:
         static constexpr Color White() { return {255, 255, 255}; }
     };
 
-    explicit LedRgbStatus(uint8_t pin, uint8_t brightness = 32, uint16_t pixelsCount = 1);
+    explicit LedRgbStatus(uint8_t pin = RGB_STATUS_PIN,
+                          uint8_t brightness = RGB_STATUS_BRIGHTNESS,
+                          uint16_t pixelsCount = 1);
 
     void begin();
 
@@ -81,6 +99,3 @@ private:
     // timing
     uint32_t _lastMs = 0;
 };
-
-
-#endif //TASK_03_LEDRGBSTATUS_H

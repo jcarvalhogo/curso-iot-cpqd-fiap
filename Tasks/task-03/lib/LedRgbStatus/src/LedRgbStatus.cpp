@@ -8,7 +8,7 @@ LedRgbStatus::LedRgbStatus(uint8_t pin, uint8_t brightness, uint16_t pixelsCount
     : _pin(pin),
       _brightness(brightness),
       _pixelsCount(pixelsCount),
-      _strip(pixelsCount, pin, NEO_GRB + NEO_KHZ800) {
+      _strip(pixelsCount, pin, RGB_STATUS_COLOR_ORDER + RGB_STATUS_SIGNAL_FREQ) {
 }
 
 void LedRgbStatus::begin() {
@@ -98,11 +98,11 @@ void LedRgbStatus::update() {
             const uint32_t t = (now - _lastMs) % _periodMs;
             const float phase = (float) t / (float) _periodMs;
             const float tri = (phase < 0.5f) ? (phase * 2.0f) : (2.0f - phase * 2.0f);
-            const uint8_t k = (uint8_t)(tri * 255.0f);
+            const uint8_t k = (uint8_t) (tri * 255.0f);
 
-            const uint8_t r = (uint8_t)((uint16_t) _color.r * k / 255);
-            const uint8_t g = (uint8_t)((uint16_t) _color.g * k / 255);
-            const uint8_t b = (uint8_t)((uint16_t) _color.b * k / 255);
+            const uint8_t r = (uint8_t) ((uint16_t) _color.r * k / 255);
+            const uint8_t g = (uint8_t) ((uint16_t) _color.g * k / 255);
+            const uint8_t b = (uint8_t) ((uint16_t) _color.b * k / 255);
 
             showColor(r, g, b);
             return;
