@@ -1,0 +1,26 @@
+{
+  "name": "AppController",
+  "version": "1.0.0",
+  "description": "Wrapper simples para Grove OLED SH1107 128x128 via I2C (U8g2) no ESP32/Arduino",
+  "keywords": [
+    "oled",
+    "sh1107",
+    "u8g2",
+    "i2c",
+    "esp32"
+  ],
+  "authors": [
+    {
+      "name": "Josemar Carvalho"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "espressif32",
+  "dependencies": [
+    {
+      "name": "U8g2",
+      "version": "^2.35.0"
+    }
+  ]
+}

@@ -32,7 +32,6 @@ bool RtcClock::begin() {
 
 void RtcClock::poll() {
     if (!_ok) return;
-
     const uint32_t nowMs = millis();
     if (nowMs - _lastMs < _refreshMs) return;
     _lastMs = nowMs;
@@ -51,8 +50,7 @@ RtcClock::Snapshot RtcClock::snapshot() const {
 
 void RtcClock::formatTimeOrUptime(char* out, size_t outSz) const {
     if (_ok && _running) {
-        snprintf(out, outSz, "%02d:%02d:%02d",
-                 _now.hour(), _now.minute(), _now.second());
+        snprintf(out, outSz, "%02d:%02d:%02d", _now.hour(), _now.minute(), _now.second());
     } else {
         const uint32_t up = millis() / 1000;
         snprintf(out, outSz, "up %lus", (unsigned long)up);
