@@ -27,7 +27,6 @@
 }
 
 .topbar,
-.control-room,
 .class-lab {
   position: relative;
   z-index: 1;
@@ -36,6 +35,11 @@
   border-radius: 1.2rem;
   background: var(--panel);
   box-shadow: var(--shadow-card);
+}
+
+.control-room {
+  position: relative;
+  z-index: 1;
 }
 
 .topbar {
