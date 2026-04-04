@@ -24,7 +24,6 @@ void HttpServer::setupSecureHeadersCollection() {
     _server.collectHeaders(keys, sizeof(keys) / sizeof(keys[0]));
 }
 
-// ✅ removido const aqui
 bool HttpServer::isClientAllowed() {
     IPAddress rip = _server.client().remoteIP();
 
