@@ -13,6 +13,12 @@ export type ClassItem = {
   name: string
 }
 
+export type TrainingConfig = {
+  epochs: number
+  learningRate: number
+  hiddenUnits: number
+}
+
 export const MIN_SAMPLES_PER_CLASS = 1
 export const TARGET_SAMPLES_PER_CLASS = 12
 export const GUIDE_LINES = [
@@ -21,7 +27,9 @@ export const GUIDE_LINES = [
   'Refaca o treino se a predicao oscilar demais.',
 ] as const
 
-export const INITIAL_CLASSES: ClassItem[] = [
-  { id: 1, name: 'Classe 1' },
-  { id: 2, name: 'Classe 2' },
-]
+export const INITIAL_CLASSES: ClassItem[] = []
+export const DEFAULT_TRAINING_CONFIG: TrainingConfig = {
+  epochs: 20,
+  learningRate: 0.0001,
+  hiddenUnits: 128,
+}

@@ -2,9 +2,11 @@ import * as mobilenet from '@tensorflow-models/mobilenet'
 import * as tf from '@tensorflow/tfjs'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
+  DEFAULT_TRAINING_CONFIG,
   INITIAL_CLASSES,
   MIN_SAMPLES_PER_CLASS,
   type PredictionState,
+  type TrainingConfig,
   type TrainingState,
 } from '../models/machine-learning'
 
@@ -14,15 +16,14 @@ export function useMachineLearningViewModel() {
   const mobilenetRef = useRef<mobilenet.MobileNet | null>(null)
   const classifierRef = useRef<tf.Sequential | null>(null)
   const animationFrameRef = useRef<number | null>(null)
-  const classNamesRef = useRef(INITIAL_CLASSES.map((item) => item.name))
+  const classNamesRef = useRef<string[]>([])
   const trainingExamplesRef = useRef<tf.Tensor2D[]>([])
   const trainingLabelsRef = useRef<number[]>([])
-  const nextClassIdRef = useRef(INITIAL_CLASSES.length + 1)
+  const nextClassIdRef = useRef(1)
+  const stopTrainingRequestedRef = useRef(false)
 
   const [classes, setClasses] = useState(INITIAL_CLASSES)
-  const [sampleCounts, setSampleCounts] = useState<number[]>(
-    Array(INITIAL_CLASSES.length).fill(0),
-  )
+  const [sampleCounts, setSampleCounts] = useState<number[]>([])
   const [isModelReady, setIsModelReady] = useState(false)
   const [isCameraReady, setIsCameraReady] = useState(false)
   const [isTraining, setIsTraining] = useState(false)
@@ -32,9 +33,14 @@ export function useMachineLearningViewModel() {
   )
   const [prediction, setPrediction] = useState<PredictionState | null>(null)
   const [trainingState, setTrainingState] = useState<TrainingState | null>(null)
-  const [selectedClassId, setSelectedClassId] = useState(INITIAL_CLASSES[0].id)
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null)
   const [isAddClassDialogOpen, setIsAddClassDialogOpen] = useState(false)
   const [newClassName, setNewClassName] = useState('')
+  const [isTrainingDialogOpen, setIsTrainingDialogOpen] = useState(false)
+  const [trainingConfig, setTrainingConfig] = useState<TrainingConfig>(
+    DEFAULT_TRAINING_CONFIG,
+  )
+  const [trainingLogs, setTrainingLogs] = useState<string[]>([])
 
   const canTrain = useMemo(
     () =>
@@ -60,6 +66,11 @@ export function useMachineLearningViewModel() {
   )
   const selectedClass =
     selectedClassIndex >= 0 ? classes[selectedClassIndex] : null
+  const trainingProgressLabel = trainingState
+    ? `Epoca ${trainingState.epoch}/${trainingConfig.epochs} · loss ${trainingState.loss.toFixed(4)}`
+    : isTraining
+      ? 'Preparando dados e inicializando treino...'
+      : 'Aguardando inicio do treino'
 
   classNamesRef.current = classes.map((item) => item.name)
 
@@ -158,7 +169,7 @@ export function useMachineLearningViewModel() {
         video.srcObject = stream
         await video.play()
         setIsCameraReady(true)
-        setStatus('Webcam pronta. Colete exemplos para cada classe.')
+        setStatus('Webcam pronta. Adicione classes para comecar os testes.')
       } catch (error) {
         console.error(error)
         setStatus(
@@ -193,6 +204,7 @@ export function useMachineLearningViewModel() {
   function addClass(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     clearTrainingData()
+
     const nextClassNumber = nextClassIdRef.current
     nextClassIdRef.current += 1
     const className = newClassName.trim() || `Classe ${classes.length + 1}`
@@ -204,7 +216,7 @@ export function useMachineLearningViewModel() {
     setSampleCounts((currentCounts) => [...currentCounts, 0])
     setSelectedClassId(nextClassNumber)
     closeAddClassDialog()
-    setStatus('Nova classe adicionada. Colete amostras novamente para treinar.')
+    setStatus('Nova classe adicionada. Selecione a linha e capture exemplos.')
   }
 
   function removeClass(index: number) {
@@ -222,10 +234,7 @@ export function useMachineLearningViewModel() {
     )
 
     const fallbackClass = classes.find((_, currentIndex) => currentIndex !== index)
-    if (fallbackClass) {
-      setSelectedClassId(fallbackClass.id)
-    }
-
+    setSelectedClassId(fallbackClass ? fallbackClass.id : null)
     setStatus(
       'Classe removida. As amostras foram limpas para manter o teste consistente.',
     )
@@ -257,6 +266,32 @@ export function useMachineLearningViewModel() {
     setStatus(`Exemplo salvo para ${classes[classIndex].name}.`)
   }
 
+  function openTrainingDialog() {
+    setIsTrainingDialogOpen(true)
+    setTrainingLogs((currentLogs) =>
+      currentLogs.length > 0
+        ? currentLogs
+        : ['Configure os parametros para iniciar o treino do modelo.'],
+    )
+  }
+
+  function closeTrainingDialog() {
+    if (!isTraining) {
+      setIsTrainingDialogOpen(false)
+    }
+  }
+
+  function updateTrainingConfig(field: keyof TrainingConfig, value: number) {
+    if (!Number.isFinite(value) || value <= 0) {
+      return
+    }
+
+    setTrainingConfig((currentConfig) => ({
+      ...currentConfig,
+      [field]: value,
+    }))
+  }
+
   async function trainClassifier() {
     if (!canTrain || trainingExamplesRef.current.length === 0) {
       setStatus(
@@ -267,10 +302,22 @@ export function useMachineLearningViewModel() {
 
     stopPredictionLoop()
     classifierRef.current?.dispose()
+    stopTrainingRequestedRef.current = false
     setIsTraining(true)
     setPrediction(null)
     setTrainingState(null)
+    setTrainingLogs([
+      `Treino iniciado com ${classes.length} classes e ${trainingExamplesRef.current.length} amostras.`,
+      `Parametros: ${trainingConfig.epochs} epocas, learning rate ${trainingConfig.learningRate}, ${trainingConfig.hiddenUnits} neuronios.`,
+      'Preparando tensores e configurando o modelo...',
+    ])
     setStatus('Treinando classificador no navegador...')
+
+    // Give React a frame to paint the loading state before heavy tensor work starts.
+    await tf.nextFrame()
+    await new Promise<void>((resolve) => {
+      window.setTimeout(() => resolve(), 0)
+    })
 
     const inputs = tf.concat(trainingExamplesRef.current) as tf.Tensor2D
     const labels = tf.tensor1d(trainingLabelsRef.current, 'int32')
@@ -281,7 +328,7 @@ export function useMachineLearningViewModel() {
       layers: [
         tf.layers.dense({
           inputShape: [inputs.shape[1]],
-          units: 128,
+          units: trainingConfig.hiddenUnits,
           activation: 'relu',
         }),
         tf.layers.dense({
@@ -292,38 +339,77 @@ export function useMachineLearningViewModel() {
     })
 
     classifier.compile({
-      optimizer: tf.train.adam(0.0001),
+      optimizer: tf.train.adam(trainingConfig.learningRate),
       loss: 'categoricalCrossentropy',
       metrics: ['accuracy'],
     })
 
     try {
       await classifier.fit(inputs, oneHotLabels, {
-        epochs: 20,
+        epochs: trainingConfig.epochs,
         shuffle: true,
         callbacks: {
-          onEpochEnd: (epoch, logs) => {
+          onEpochEnd: async (epoch, logs) => {
             setTrainingState({
               epoch: epoch + 1,
               loss: logs?.loss ?? 0,
             })
+            setTrainingLogs((currentLogs) => [
+              ...currentLogs,
+              `Epoca ${epoch + 1}/${trainingConfig.epochs} finalizada com loss ${(logs?.loss ?? 0).toFixed(4)}.`,
+            ])
+            if (stopTrainingRequestedRef.current) {
+              classifier.stopTraining = true
+            }
+            await tf.nextFrame()
           },
         },
       })
 
       classifierRef.current = classifier
-      setStatus('Treino concluido. Executando predicao em tempo real.')
-      predictFrame()
+
+      if (stopTrainingRequestedRef.current) {
+        setStatus('Treino interrompido pelo usuario.')
+        setTrainingLogs((currentLogs) => [
+          ...currentLogs,
+          'Treino interrompido pelo usuario.',
+        ])
+      } else {
+        setStatus('Treino concluido. Executando predicao em tempo real.')
+        setTrainingLogs((currentLogs) => [
+          ...currentLogs,
+          'Treino concluido. Iniciando predicao em tempo real.',
+        ])
+        predictFrame()
+      }
     } catch (error) {
       console.error(error)
       classifier.dispose()
       setStatus('O treino falhou. Revise as amostras coletadas e tente novamente.')
+      setTrainingLogs((currentLogs) => [
+        ...currentLogs,
+        'Treino interrompido por erro. Revise as configuracoes e as amostras.',
+      ])
     } finally {
+      stopTrainingRequestedRef.current = false
       inputs.dispose()
       labels.dispose()
       oneHotLabels.dispose()
       setIsTraining(false)
     }
+  }
+
+  function stopTraining() {
+    if (!isTraining) {
+      return
+    }
+
+    stopTrainingRequestedRef.current = true
+    setTrainingLogs((currentLogs) => [
+      ...currentLogs,
+      'Solicitacao para parar o treino enviada. Aguardando fim da epoca atual.',
+    ])
+    setStatus('Parando treino...')
   }
 
   function resetSamples() {
@@ -345,21 +431,29 @@ export function useMachineLearningViewModel() {
     trainingState,
     selectedClassId,
     isAddClassDialogOpen,
+    isTrainingDialogOpen,
     newClassName,
+    trainingConfig,
+    trainingLogs,
     canTrain,
     totalSamples,
     readyClasses,
     predictionConfidence,
     selectedClassIndex,
     selectedClass,
+    trainingProgressLabel,
     setSelectedClassId,
     setNewClassName,
     openAddClassDialog,
     closeAddClassDialog,
+    openTrainingDialog,
+    closeTrainingDialog,
+    updateTrainingConfig,
     addClass,
     removeClass,
     collectExample,
     trainClassifier,
+    stopTraining,
     resetSamples,
   }
 }

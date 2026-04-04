@@ -3,12 +3,8 @@ import { TARGET_SAMPLES_PER_CLASS, type ClassItem } from '../models/machine-lear
 type ClassTableSectionProps = {
   classes: ClassItem[]
   sampleCounts: number[]
-  selectedClassId: number
-  selectedClassLabel: string
-  isCameraReady: boolean
-  selectedClassIndex: number
+  selectedClassId: number | null
   onOpenAddClassDialog: () => void
-  onCollectSelectedClass: () => void
   onSelectClass: (classId: number) => void
   onRemoveClass: (index: number) => void
 }
@@ -17,11 +13,7 @@ export function ClassTableSection({
   classes,
   sampleCounts,
   selectedClassId,
-  selectedClassLabel,
-  isCameraReady,
-  selectedClassIndex,
   onOpenAddClassDialog,
-  onCollectSelectedClass,
   onSelectClass,
   onRemoveClass,
 }: ClassTableSectionProps) {
@@ -48,21 +40,15 @@ export function ClassTableSection({
       </div>
 
       <div className="class-toolbar">
-        <button
-          type="button"
-          className="button-primary"
-          onClick={onOpenAddClassDialog}
-        >
-          Adicionar classe
-        </button>
-        <button
-          type="button"
-          className="capture-button"
-          onClick={onCollectSelectedClass}
-          disabled={!isCameraReady || selectedClassIndex < 0}
-        >
-          {selectedClassLabel}
-        </button>
+        <div className="toolbar-group">
+          <button
+            type="button"
+            className="button-primary"
+            onClick={onOpenAddClassDialog}
+          >
+            Adicionar classe
+          </button>
+        </div>
       </div>
 
       <div className="table-shell">
@@ -78,7 +64,13 @@ export function ClassTableSection({
             </tr>
           </thead>
           <tbody>
-            {classes.map((classItem, index) => {
+            {classes.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="empty-table">
+                  Nenhuma classe criada ainda. Clique em Adicionar classe para iniciar.
+                </td>
+              </tr>
+            ) : classes.map((classItem, index) => {
               const sampleCount = sampleCounts[index]
               const progress = Math.min(
                 100,
