@@ -111,6 +111,11 @@
   align-items: center;
 }
 
+.logo-link {
+  display: inline-flex;
+  align-items: center;
+}
+
 .cpqd-logo-lockup {
   position: relative;
   display: inline-flex;
@@ -597,37 +602,15 @@
   padding: 0 0.2rem 0.45rem;
 }
 
-.footer-guide {
-  position: relative;
-  display: flex;
-  align-items: flex-end;
-}
-
-.footer-guide-trigger {
-  position: relative;
+.footer-link {
   display: inline-flex;
   align-items: flex-end;
-  border: 0;
   padding: 0;
-  background: transparent;
-  cursor: help;
+  text-decoration: none;
 }
 
-.footer-guide-trigger:hover .footer-tooltip,
-.footer-guide-trigger:focus-visible .footer-tooltip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-.footer-tooltip {
-  top: auto;
-  bottom: calc(100% + 0.75rem);
-  width: min(24rem, 80vw);
-}
-
-.footer-tooltip-line {
-  display: block;
-  margin-bottom: 0.55rem;
+.footer-link::before {
+  align-self: center;
 }
 
 .section-title {
