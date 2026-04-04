@@ -1,0 +1,97 @@
+:root {
+  --bg: #081018;
+  --bg-2: #111b25;
+  --panel: linear-gradient(180deg, rgba(14, 22, 31, 0.92), rgba(10, 16, 24, 0.96));
+  --panel-soft: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  --text: #c8d4db;
+  --text-soft: #95a8b5;
+  --text-muted: #6f8594;
+  --text-strong: #f1f6f8;
+  --accent: #ff8036;
+  --accent-2: #59d1ba;
+  --border: rgba(255, 255, 255, 0.1);
+  --shadow-card:
+    0 28px 70px -30px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --sans: 'IBM Plex Sans', 'Avenir Next', 'Segoe UI', sans-serif;
+  --heading: 'Sora', 'IBM Plex Sans', 'Avenir Next', sans-serif;
+
+  font: 17px/1.5 var(--sans);
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    linear-gradient(180deg, #071018 0%, var(--bg) 40%, var(--bg-2) 100%);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  width: min(1320px, 100%);
+  margin: 0 auto;
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3,
+strong {
+  color: var(--text-strong);
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: var(--heading);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+h1 {
+  font-size: clamp(3rem, 6vw, 5rem);
+  line-height: 0.92;
+}
+
+h2 {
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  line-height: 1;
+}
+
+h3 {
+  font-size: 1rem;
+}
+
+p {
+  margin: 0;
+}
+
+a,
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(255, 128, 54, 0.3);
+}
+
+@media (max-width: 900px) {
+  :root {
+    font-size: 16px;
+  }
+}
