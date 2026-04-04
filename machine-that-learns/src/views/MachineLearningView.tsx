@@ -26,13 +26,18 @@ export function MachineLearningView({ viewModel }: MachineLearningViewProps) {
         prediction={viewModel.prediction}
         predictionConfidence={viewModel.predictionConfidence}
         trainingState={viewModel.trainingState}
+        trainingEpochs={viewModel.trainingConfig.epochs}
+        trainingProgressPercent={viewModel.trainingProgressPercent}
         totalSamples={viewModel.totalSamples}
         readyClasses={viewModel.readyClasses}
         classCount={viewModel.classes.length}
         canTrain={viewModel.canTrain}
         isTraining={viewModel.isTraining}
         canReset={viewModel.totalSamples > 0}
+        canCapture={viewModel.selectedClassIndex >= 0 && viewModel.isCameraReady}
+        focusedClassName={viewModel.selectedClass?.name ?? null}
         onOpenTraining={viewModel.openTrainingDialog}
+        onCapture={viewModel.collectSelectedClassExample}
         onReset={viewModel.resetSamples}
       />
 

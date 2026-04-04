@@ -8,13 +8,18 @@ type ControlRoomProps = {
   prediction: PredictionState | null
   predictionConfidence: number
   trainingState: TrainingState | null
+  trainingEpochs: number
+  trainingProgressPercent: number
   totalSamples: number
   readyClasses: number
   classCount: number
   canTrain: boolean
   isTraining: boolean
   canReset: boolean
+  canCapture: boolean
+  focusedClassName: string | null
   onOpenTraining: () => void
+  onCapture: () => void
   onReset: () => void
 }
 
@@ -26,13 +31,18 @@ export function ControlRoom({
   prediction,
   predictionConfidence,
   trainingState,
+  trainingEpochs,
+  trainingProgressPercent,
   totalSamples,
   readyClasses,
   classCount,
   canTrain,
   isTraining,
   canReset,
+  canCapture,
+  focusedClassName,
   onOpenTraining,
+  onCapture,
   onReset,
 }: ControlRoomProps) {
   return (
@@ -54,7 +64,13 @@ export function ControlRoom({
           <span>Amostras totais</span>
           <strong>{totalSamples}</strong>
         </div>
-        <div className="action-row action-row-stacked">
+        <div className="focus-row">
+          <span>Capturando amostras para</span>
+          <strong title={focusedClassName ?? 'Nenhuma classe selecionada'}>
+            {focusedClassName ?? 'Nenhuma selecionada'}
+          </strong>
+        </div>
+        <div className="action-row">
           <button
             type="button"
             className="button-primary"
@@ -62,6 +78,14 @@ export function ControlRoom({
             disabled={!canTrain}
           >
             {isTraining ? 'Treinando...' : 'Treinar modelo'}
+          </button>
+          <button
+            type="button"
+            className="capture-button"
+            onClick={onCapture}
+            disabled={!canCapture || isTraining}
+          >
+            Coletar amostra
           </button>
           <button
             type="button"
@@ -109,6 +133,28 @@ export function ControlRoom({
         <div className="prediction-bar" aria-hidden="true">
           <div className="prediction-fill" style={{ width: `${predictionConfidence}%` }} />
         </div>
+        <div className="training-results-grid">
+          <div className="result-card">
+            <span>Accuracy</span>
+            <strong>
+              {trainingState?.accuracy !== null && trainingState?.accuracy !== undefined
+                ? `${(trainingState.accuracy * 100).toFixed(1)}%`
+                : '--'}
+            </strong>
+          </div>
+          <div className="result-card">
+            <span>Progresso</span>
+            <strong>{trainingState ? `${trainingProgressPercent}%` : '--'}</strong>
+          </div>
+          <div className="result-card">
+            <span>Amostras</span>
+            <strong>{totalSamples}</strong>
+          </div>
+          <div className="result-card">
+            <span>Classes</span>
+            <strong>{classCount}</strong>
+          </div>
+        </div>
         <div className="telemetry-row">
           <span>Estado</span>
           <strong>{isPredicting ? 'Executando' : 'Parado'}</strong>
@@ -119,7 +165,7 @@ export function ControlRoom({
         </div>
         <div className="telemetry-row">
           <span>Ultima epoca</span>
-          <strong>{trainingState ? trainingState.epoch : '--'}</strong>
+          <strong>{trainingState ? `${trainingState.epoch}/${trainingEpochs}` : '--'}</strong>
         </div>
       </div>
     </section>

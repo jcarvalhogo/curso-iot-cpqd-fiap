@@ -333,6 +333,55 @@
   gap: 0.85rem;
 }
 
+.dataset-side-card .action-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: auto;
+}
+
+.dataset-side-card .button-primary,
+.dataset-side-card .button-secondary,
+.dataset-side-card .capture-button {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  height: 3.4rem;
+  min-height: 3.4rem;
+  white-space: nowrap;
+}
+
+.button-label-ellipsis {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-row {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.focus-row span {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.focus-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
 .monitor-card,
 .telemetry-card,
 .actions-card,
@@ -386,6 +435,33 @@
   border-radius: inherit;
   background: linear-gradient(90deg, #ff8036, #ffd36b);
   transition: width 0.25s ease;
+}
+
+.training-results-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.result-card {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.result-card span {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.result-card strong {
+  font-size: 1.05rem;
+  color: var(--text-strong);
 }
 
 .telemetry-row {

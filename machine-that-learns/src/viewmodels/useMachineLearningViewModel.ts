@@ -67,10 +67,14 @@ export function useMachineLearningViewModel() {
   const selectedClass =
     selectedClassIndex >= 0 ? classes[selectedClassIndex] : null
   const trainingProgressLabel = trainingState
-    ? `Epoca ${trainingState.epoch}/${trainingConfig.epochs} · loss ${trainingState.loss.toFixed(4)}`
+    ? `Epoca ${trainingState.epoch}/${trainingConfig.epochs} · loss ${trainingState.loss.toFixed(4)} · acc ${(((trainingState.accuracy ?? 0) * 100)).toFixed(1)}%`
     : isTraining
       ? 'Preparando dados e inicializando treino...'
       : 'Aguardando inicio do treino'
+  const trainingProgressPercent =
+    trainingState && trainingConfig.epochs > 0
+      ? Math.min(100, Math.round((trainingState.epoch / trainingConfig.epochs) * 100))
+      : 0
 
   classNamesRef.current = classes.map((item) => item.name)
 
@@ -353,10 +357,16 @@ export function useMachineLearningViewModel() {
             setTrainingState({
               epoch: epoch + 1,
               loss: logs?.loss ?? 0,
+              accuracy:
+                typeof logs?.acc === 'number'
+                  ? logs.acc
+                  : typeof logs?.accuracy === 'number'
+                    ? logs.accuracy
+                    : null,
             })
             setTrainingLogs((currentLogs) => [
               ...currentLogs,
-              `Epoca ${epoch + 1}/${trainingConfig.epochs} finalizada com loss ${(logs?.loss ?? 0).toFixed(4)}.`,
+              `Epoca ${epoch + 1}/${trainingConfig.epochs} finalizada com loss ${(logs?.loss ?? 0).toFixed(4)} e acc ${(((typeof logs?.acc === 'number' ? logs.acc : typeof logs?.accuracy === 'number' ? logs.accuracy : 0) * 100)).toFixed(1)}%.`,
             ])
             if (stopTrainingRequestedRef.current) {
               classifier.stopTraining = true
@@ -418,6 +428,15 @@ export function useMachineLearningViewModel() {
     setStatus('Amostras limpas. Colete novos exemplos para treinar novamente.')
   }
 
+  function collectSelectedClassExample() {
+    if (selectedClassIndex < 0) {
+      setStatus('Selecione uma classe na tabela antes de capturar um exemplo.')
+      return
+    }
+
+    collectExample(selectedClassIndex)
+  }
+
   return {
     videoRef,
     classes,
@@ -442,6 +461,7 @@ export function useMachineLearningViewModel() {
     selectedClassIndex,
     selectedClass,
     trainingProgressLabel,
+    trainingProgressPercent,
     setSelectedClassId,
     setNewClassName,
     openAddClassDialog,
@@ -452,6 +472,7 @@ export function useMachineLearningViewModel() {
     addClass,
     removeClass,
     collectExample,
+    collectSelectedClassExample,
     trainClassifier,
     stopTraining,
     resetSamples,

@@ -6,6 +6,7 @@ export type PredictionState = {
 export type TrainingState = {
   epoch: number
   loss: number
+  accuracy: number | null
 }
 
 export type ClassItem = {
